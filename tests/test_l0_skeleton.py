@@ -211,3 +211,26 @@ class TestFhirDecisions:
     def test_pinned_fhir_lib_imports_r4b(self) -> None:
         """The pinned dep actually provides the chosen emit line."""
         from fhir.resources.R4B.observation import Observation  # noqa: F401
+
+
+class TestClaimGuardUnicodeHardening:
+    """LHM-SEC-01: the denylist folds NFKC + strips zero-width chars."""
+
+    def test_zero_width_insertion_caught(self) -> None:
+        with pytest.raises(ClaimScopeError):
+            assert_claim_safe("Omega-3 im​proves sleep", _SAFE_CAVEATS, "mid", False)
+
+    def test_fullwidth_compat_form_caught(self) -> None:
+        # Fullwidth Latin folds to ASCII under NFKC.
+        word = "ｉｍｐｒｏｖｅ"  # ｉｍｐｒｏｖｅ
+        with pytest.raises(ClaimScopeError):
+            assert_claim_safe(f"Omega-3 {word}s sleep", _SAFE_CAVEATS, "mid", False)
+
+    def test_markers_fold_too(self) -> None:
+        # An association marker written with a zero-width char still counts.
+        assert_claim_safe(
+            "Omega-3 and sleep — personal trend",
+            ("Personal n-of-1 asso​ciation; uncertainty interval applies.",),
+            "mid",
+            False,
+        )

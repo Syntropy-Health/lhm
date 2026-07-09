@@ -24,6 +24,7 @@ persist/render on failure (and must not "fix" text automatically).
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 
 #: Clinical-efficacy vocabulary that must never appear in metric text
@@ -67,8 +68,22 @@ class ClaimScopeError(ValueError):
     """A metric's text violates the claim-scope contract (R10)."""
 
 
+def _fold(text: str) -> str:
+    """NFKC-normalize + casefold + strip zero-width/format chars (LHM-SEC-01).
+
+    Defense-in-depth for the denylist layer: homoglyph-adjacent compatibility
+    forms and zero-width insertions (``im\u200bprove``) fold back to matchable
+    ASCII before the banned-lexicon / marker checks run. The structural triad
+    remains the primary control.
+    """
+    normalized = unicodedata.normalize("NFKC", text)
+    return "".join(
+        ch for ch in normalized if unicodedata.category(ch) not in ("Cf", "Mn")
+    ).casefold()
+
+
 def _contains_any(texts: Iterable[str], markers: tuple[str, ...]) -> bool:
-    low = " ".join(texts).lower()
+    low = _fold(" ".join(texts))
     return any(m in low for m in markers)
 
 
@@ -89,7 +104,7 @@ def assert_claim_safe(
     """
     texts = (label, *caveats)
 
-    hit = next((m.group(0) for t in texts if (m := _BANNED_RE.search(t))), None)
+    hit = next((m.group(0) for t in texts if (m := _BANNED_RE.search(_fold(t)))), None)
     if hit is not None:
         raise ClaimScopeError(
             f"banned clinical-efficacy term {hit!r} in metric text — personal "
