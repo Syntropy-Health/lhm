@@ -7,7 +7,6 @@ clean env (the R7 install test reuses it). No app imports, no DB, no network.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -62,9 +61,10 @@ class TestNoAppImports:
             "assert not hit, f'lhm imported app frameworks: {hit}'\n"
             "print('clean')\n"
         )
-        env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1])}
+        # No forced PYTHONPATH (scorer residual): the subprocess exercises
+        # the INSTALLED package, same as TestAppIndependenceAllowlist.
         out = subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, text=True, check=False, env=env
+            [sys.executable, "-c", code], capture_output=True, text=True, check=False
         )
         assert out.returncode == 0, out.stderr
         assert "clean" in out.stdout
