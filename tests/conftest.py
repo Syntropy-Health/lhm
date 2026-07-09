@@ -29,10 +29,40 @@ def _hidden_lhm_pth_present() -> bool:
     return False
 
 
+def _clear_hidden_editable_flags() -> None:
+    """L1 addition: the L0 fallback below only rescues THIS interpreter —
+    the app-independence tests spawn clean SUBPROCESSES, which re-hit the
+    hidden .pth. Clearing the flag fixes every future interpreter too.
+    (Same mechanism as the app-level tests/conftest.py self-heal.)"""
+    if sys.platform != "darwin":
+        return
+    import subprocess
+
+    for sp in site.getsitepackages() + [site.getusersitepackages()]:
+        root = Path(sp)
+        if not root.is_dir():
+            continue
+        for pattern in ("*.pth", "__editable__*finder*.py"):
+            for f in root.glob(pattern):
+                try:
+                    hidden = os.stat(f).st_flags & _UF_HIDDEN  # type: ignore[attr-defined]
+                except (AttributeError, OSError):
+                    continue
+                if hidden:
+                    subprocess.run(["chflags", "nohidden", str(f)], check=False)
+
+
+# Detect BEFORE clearing — the clear helps every FUTURE interpreter (incl.
+# the subprocess tests) but can't help THIS one, whose site.py already
+# skipped the hidden .pth; the in-process fallback below keys on the
+# pre-clear detection.
+_WAS_HIDDEN = _hidden_lhm_pth_present()
+_clear_hidden_editable_flags()
+
 try:  # the editable install (normal path)
     import lhm  # noqa: F401
 except ModuleNotFoundError:
-    if _hidden_lhm_pth_present():
+    if _WAS_HIDDEN:
         # The known APFS flag quirk — rescue loudly.
         print(
             "WARNING: lhm editable .pth is UF_HIDDEN (site.py skipped it) — "

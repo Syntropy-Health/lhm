@@ -1,0 +1,29 @@
+LHM — Longevity Health Metrics SDK
+Copyright 2026 Syntropy Health
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product depends on the following third-party packages (runtime):
+
+- fhir.resources (https://github.com/nazrulworld/fhir.resources)
+  License: BSD-3-Clause. Copyright (c) nazrulworld and contributors.
+
+- fhir-core (https://github.com/nazrulworld/fhir-core)
+  License: BSD-3-Clause. Copyright (c) 2019, Md Nazrul Islam.
+  (License text verified against the canonical repository LICENSE file
+  on 2026-07-09 — the A&D D2 pre-NOTICE verification item.)
+
+- pydantic (https://github.com/pydantic/pydantic)
+  License: MIT. Copyright (c) Pydantic Services Inc. and contributors.
+
+Optional extra ``lhm[units]``:
+
+- pint (https://github.com/hgrecco/pint)
+  License: BSD-3-Clause. Copyright (c) Hernan E. Grecco and contributors.
+
+- ucumvert (https://github.com/dalito/ucumvert)
+  License: MIT. Copyright (c) the ucumvert contributors.
+
+All listed licenses are BSD/MIT-family — compatible with Apache-2.0
+redistribution; no copyleft in the dependency graph (A&D D2 license
+posture; re-verified at each release by the R7 packaging gate).
