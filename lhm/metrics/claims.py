@@ -19,6 +19,11 @@ Three checks, all structural:
 
 Fail-CLOSED: violations raise ``ClaimScopeError`` — callers must not
 persist/render on failure (and must not "fix" text automatically).
+
+Known accepted edge (QGR code-F6): the ``\\b(word)\\w*`` stems over-match a
+few benign forms ("reverse chronological", "treaty"). Deliberate: for a
+claims guard, a rare false REJECTION beats a missed efficacy claim; the
+negated-disclaimer exemption above covers the common compliant phrasing.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ BANNED_LEXICON: tuple[str, ...] = (
     "prevent",
     "reverse",
     "efficacy",
-    "clinically",
+    "clinical",  # \w* also catches "clinically", "clinical-grade" etc.
 )
 
 #: Association-framing markers — at least one caveat must carry one.
@@ -63,9 +68,26 @@ _BANNED_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Recognized NEGATED-DISCLAIMER phrasing (QGR L0 code-F2): the standard FDA
+# structure-function disclaimer ("… not intended to diagnose, treat, cure, or
+# prevent any disease") is the canonical COMPLIANT caveat — banning its
+# vocabulary would fail-closed the exact text compliance wants. Sentences
+# matching this negated frame are excised BEFORE the denylist scan; the
+# banned check still applies to everything else in the caveat.
+_DISCLAIMER_RE = re.compile(
+    r"not\s+(?:intended|meant)\s+to\s+[^.;]*?"
+    r"(?:diagnose|treat|cure|prevent|mitigate)[^.;]*",
+    re.IGNORECASE,
+)
+
 
 class ClaimScopeError(ValueError):
     """A metric's text violates the claim-scope contract (R10)."""
+
+
+def _strip_disclaimers(text: str) -> str:
+    """Remove recognized negated-disclaimer sentences before the denylist scan."""
+    return _DISCLAIMER_RE.sub("", text)
 
 
 def _fold(text: str) -> str:
@@ -104,7 +126,10 @@ def assert_claim_safe(
     """
     texts = (label, *caveats)
 
-    hit = next((m.group(0) for t in texts if (m := _BANNED_RE.search(_fold(t)))), None)
+    hit = next(
+        (m.group(0) for t in texts if (m := _BANNED_RE.search(_strip_disclaimers(_fold(t))))),
+        None,
+    )
     if hit is not None:
         raise ClaimScopeError(
             f"banned clinical-efficacy term {hit!r} in metric text — personal "

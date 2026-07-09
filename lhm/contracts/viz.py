@@ -103,6 +103,13 @@ def export_schema() -> str:
     committed ``lhm-viz.v1.schema.json`` package-data file can be verified
     byte-for-byte in the contract test — regenerate the file with
     ``python -m lhm.contracts.viz`` after any INTENTIONAL additive change.
+
+    PYDANTIC COUPLING (QGR L0 code-F7): the byte-match also pins the exact
+    ``model_json_schema()`` output of the LOCKED pydantic version — a pydantic
+    minor upgrade can red the contract test with NO intentional schema change.
+    When that happens: diff the regenerated schema; if the delta is purely
+    representational (const/enum encoding), regenerate + commit WITH the
+    pydantic bump and note it; a SEMANTIC delta means mint v2.
     """
     schema = VizPayload.model_json_schema()
     schema = {

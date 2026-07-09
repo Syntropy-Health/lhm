@@ -26,8 +26,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# UCUM units for Observation quantities (A&D D2) — optional: keeps the core
-# floor at the FHIR lib's band; pint/ucumvert need 3.11+ (we already require it).
+# UCUM units for Observation quantities (A&D D2) — optional extra. NOTE
+# (QGR L0 design-F2, recorded A&D deviation): the CORE floor is deliberately
+# 3.11 (matches the host app toolchain + these units deps), NARROWER than
+# fhir.resources' own 3.8-3.14 band; widening the floor is a PyPI-launch
+# decision, not an L0 one.
 units = [
     "pint>=0.25,<0.26",
     "ucumvert>=0.3,<0.4",
@@ -45,3 +48,10 @@ include = ["lhm*"]
 # The committed viz contract ships INSIDE the wheel (A&D D5/F11) so installed
 # consumers can validate against the exact schema.
 lhm = ["contracts/*.json", "contracts/fixtures/**/*.json", "py.typed"]
+
+[tool.pytest.ini_options]
+# Self-rooted pytest config (QGR L0 code-F8): without this, running the suite
+# from LHM/ walks rootdir up to the APP's pyproject and inherits app-only
+# addopts (--record-mode) that break standalone/clean-env runs.
+addopts = ""
+testpaths = ["tests"]
