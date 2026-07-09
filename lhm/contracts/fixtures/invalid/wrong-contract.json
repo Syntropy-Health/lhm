@@ -1,0 +1,11 @@
+{
+  "contract": "lhm-viz/v2",
+  "metric_key": "omega3_sleep",
+  "label": "x",
+  "series": [],
+  "confidence": "mid",
+  "caveats": [
+    "Observational n-of-1 association; uncertainty interval applies."
+  ],
+  "rx_input": false
+}

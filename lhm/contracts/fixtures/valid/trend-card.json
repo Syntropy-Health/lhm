@@ -1,0 +1,23 @@
+{
+  "contract": "lhm-viz/v1",
+  "metric_key": "omega3_sleep",
+  "label": "Omega-3 intake and sleep duration — personal trend",
+  "series": [
+    {
+      "ts": "2026-01-01T00:00:00Z",
+      "value": 7.4
+    },
+    {
+      "ts": "2026-01-02T00:00:00Z",
+      "value": 6.9
+    }
+  ],
+  "regimen_start": "2026-01-01T00:00:00Z",
+  "confidence": "mid",
+  "caveats": [
+    "Personal n-of-1 association from your own records — observational, not causal.",
+    "Estimates carry an uncertainty interval and may not generalize."
+  ],
+  "rx_input": false,
+  "render_hint": "trend_card"
+}

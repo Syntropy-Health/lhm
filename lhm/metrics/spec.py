@@ -1,0 +1,132 @@
+"""MetricSpec — the single committed metric shape (A&D D4, ADR-0002).
+
+One frozen pydantic model describes a synthesized n-of-1 metric end to end:
+what it reads (``inputs``), what it explains (``outcome``), how it is
+parameterized (``form`` — the C4 zero-migration discriminator), what the fit
+produced (``FitBlock``), and the honesty layer (``confidence`` tier +
+``caveats`` + the ``rx_input`` C1b bit).
+
+ADR-0002: this shape ABSORBS PRD P3's committed
+``MyMetric(input_sources, fitting_target).optimize(method=…)`` API —
+``inputs`` ≙ input_sources, ``outcome`` ≙ fitting_target, and the optimizer
+enters (v2) through ``FitBlock.method``, never as a user-facing call.
+
+App-independence (A&D D1): NO Reflex, NO SQLModel, NO app imports — the
+consuming app persists specs (its ``CustomMetric`` store) and renders
+payloads (``lhm.contracts.viz``); this module only defines shapes.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+#: FHIR resource kinds an input reference may point at (A&D D2 — the lean
+#: four-resource mapping; ``Observation`` is outcome-side only).
+InputResource = Literal["NutritionOrder", "MedicationRequest", "MedicationStatement"]
+
+#: Outcome series sources (C3): journal series, check-in-derived sentiment,
+#: wearable series — all normalized app-side into aligned ``Observation``s.
+OutcomeKind = Literal["journal_series", "checkin_sentiment", "wearable_series"]
+
+#: v2 estimator slot (ADR-0002 reserve). v0.1 ships deterministic stubs only;
+#: ``adam`` / ``grid`` re-enter through the correction/fit layer in v2.
+FitMethod = Literal["stub", "adam", "grid"]
+
+Confidence = Literal["low", "mid", "strong"]
+
+
+class InputRef(BaseModel):
+    """One input ("order"/regimen) the metric reads, FHIR-typed (A&D D2)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    resource: InputResource
+    #: The clinical code carried as a plain FHIR ``Coding`` code value —
+    #: no terminology-server dep (A&D D2); display is human-facing.
+    code: str
+    display: str = ""
+
+
+class OutcomeRef(BaseModel):
+    """The outcome series the metric explains (the P3 ``fitting_target``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: OutcomeKind
+    series_key: str
+
+
+class CorrectionResult(BaseModel):
+    """One named C2 correction hook's contribution to a fit (R4 contract).
+
+    v0.1 carries name + applied + note only — the typed numeric payload
+    arrives with the real estimators (L2/v2). Defined NOW so the FitBlock
+    field type is stable across phases.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    applied: bool
+    note: str = ""
+
+
+class FitBlock(BaseModel):
+    """The fit result (C4): posterior + effective sample + score + method.
+
+    ``method`` is the ADR-0002 reserved estimator slot — always ``"stub"``
+    in v0.1. ``corrections`` threads the R4 hook results (contract-shaped;
+    numerics deferred).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    posterior_mean: float
+    posterior_ci: tuple[float, float]
+    n_effective: int = Field(ge=0)
+    fit_score: float
+    method: FitMethod = "stub"
+    corrections: tuple[CorrectionResult, ...] = ()
+
+
+class MetricSpec(BaseModel):
+    """A synthesized, pinnable n-of-1 metric (the ONE committed shape).
+
+    Persistence contract (C4, app-side): the consuming app stores this as
+    the JSONB ``parameterization`` of its ``CustomMetric`` row; the ``form``
+    discriminator lets future shapes store+read without migration. Only
+    ``mid``/``strong`` confidence specs persist; candidates stay ephemeral.
+
+    The honesty layer is STRUCTURAL: ``caveats`` render verbatim (R6) and
+    ``lhm.metrics.claims.assert_claim_safe`` gates every persist AND render
+    (R10). ``rx_input`` is the C1b tier bit — set by the app's ADAPTER from
+    the source record type, never by an LLM (A&D D9; unknown sources fail
+    CLOSED to ``True``).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    metric_key: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1)
+    inputs: tuple[InputRef, ...] = Field(min_length=1)
+    outcome: OutcomeRef
+    form: Literal["linear_standardized"] = "linear_standardized"
+    fit: FitBlock | None = None
+    confidence: Confidence
+    caveats: tuple[str, ...] = Field(min_length=1)
+    rx_input: bool
+
+
+__all__ = [
+    "Confidence",
+    "CorrectionResult",
+    "FitBlock",
+    "FitMethod",
+    "InputRef",
+    "InputResource",
+    "MetricSpec",
+    "OutcomeKind",
+    "OutcomeRef",
+]

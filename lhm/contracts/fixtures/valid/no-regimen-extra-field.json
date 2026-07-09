@@ -1,0 +1,19 @@
+{
+  "contract": "lhm-viz/v1",
+  "metric_key": "kiwi_mood",
+  "label": "Kiwi servings and evening mood — personal trend",
+  "series": [
+    {
+      "ts": "2026-02-01T00:00:00Z",
+      "value": 0.6
+    }
+  ],
+  "regimen_start": null,
+  "confidence": "low",
+  "caveats": [
+    "Observational n-of-1 correlation; the interval is wide and may not generalize."
+  ],
+  "rx_input": false,
+  "render_hint": "trend_card",
+  "future_additive_field": "tolerant readers ignore me"
+}

@@ -1,0 +1,9 @@
+{
+  "contract": "lhm-viz/v1",
+  "metric_key": "omega3_sleep",
+  "label": "Omega-3 and sleep — personal trend",
+  "series": [],
+  "confidence": "mid",
+  "caveats": [],
+  "rx_input": false
+}

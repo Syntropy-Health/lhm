@@ -1,0 +1,47 @@
+[project]
+name = "lhm"
+version = "0.1.0"
+description = "LHM — Longevity Health Metrics SDK: chat-programmable, clinically-modelled n-of-1 personal metrics (correlation-not-causation by construction)."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "Syntropy Health" }]
+keywords = ["fhir", "n-of-1", "health-metrics", "quantified-self"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+# Dep set per the A&D D2 (researcher-grounded 2026-07-08, workstreams/
+# syntropy-lhm-sdk/research/deps-clinical-modelling.md):
+#   fhir.resources — the pydantic-v2 FHIR typed-model layer (BSD; nazrulworld
+#     line; EXACT pin per the bus-factor mitigation — bump deliberately).
+#   NO terminology library (codes are plain Coding fields + a curated table).
+#   NO web framework / HTTP / DB — the SDK is app-independent (A&D D1).
+dependencies = [
+    "pydantic>=2.7,<3",
+    "fhir.resources==8.3.0",
+]
+
+[project.optional-dependencies]
+# UCUM units for Observation quantities (A&D D2) — optional: keeps the core
+# floor at the FHIR lib's band; pint/ucumvert need 3.11+ (we already require it).
+units = [
+    "pint>=0.25,<0.26",
+    "ucumvert>=0.3,<0.4",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lhm*"]
+
+[tool.setuptools.package-data]
+# The committed viz contract ships INSIDE the wheel (A&D D5/F11) so installed
+# consumers can validate against the exact schema.
+lhm = ["contracts/*.json", "contracts/fixtures/**/*.json", "py.typed"]

@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "VizPoint": {
+      "description": "One (timestamp, value) sample of the rendered trend.",
+      "properties": {
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "ts",
+        "value"
+      ],
+      "title": "VizPoint",
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.syntropyhealth.bio/lhm-viz/v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The versioned wire shape the app's dashboard renders (A&D D5).",
+  "properties": {
+    "caveats": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Caveats",
+      "type": "array"
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "mid",
+        "strong"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "contract": {
+      "const": "lhm-viz/v1",
+      "default": "lhm-viz/v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "label": {
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "metric_key": {
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "Metric Key",
+      "type": "string"
+    },
+    "regimen_start": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Regimen Start"
+    },
+    "render_hint": {
+      "const": "trend_card",
+      "default": "trend_card",
+      "title": "Render Hint",
+      "type": "string"
+    },
+    "rx_input": {
+      "title": "Rx Input",
+      "type": "boolean"
+    },
+    "series": {
+      "items": {
+        "$ref": "#/$defs/VizPoint"
+      },
+      "title": "Series",
+      "type": "array"
+    }
+  },
+  "required": [
+    "metric_key",
+    "label",
+    "series",
+    "confidence",
+    "caveats",
+    "rx_input"
+  ],
+  "title": "VizPayload",
+  "type": "object"
+}
