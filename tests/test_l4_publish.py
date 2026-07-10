@@ -207,6 +207,16 @@ def test_sdk_envelope_round_trips_through_the_route_request_model():
     assert parsed.idempotency_key == envelope.idempotency_key
     assert parsed.published_at == envelope.published_at
     assert parsed.payload["metric_key"] == envelope.payload.metric_key
+    # T2-3: the render-contract half survives the trip intact too — the
+    # backend renders from EXACTLY what the SDK serialized.
+    assert parsed.payload["contract"] == "lhm-viz/v1"
+    assert parsed.payload["series"][0]["value"] == 5.0
+    round_tripped_ts = datetime.fromisoformat(parsed.payload["series"][0]["ts"])
+    assert round_tripped_ts.tzinfo is not None  # tz survives serialization
+    assert round_tripped_ts == STAMP
+    assert parsed.payload["confidence"] == "mid"
+    assert tuple(parsed.payload["caveats"]) == CLAIM_SAFE_CAVEATS
+    assert parsed.payload["rx_input"] is False
 
 
 def test_idempotency_recipe_matches_the_app_store():
@@ -347,6 +357,62 @@ async def test_4xx_is_definitive_no_retry_refused_receipt():
     assert "HTTP 401" in receipt.reason
     assert len(calls) == 1
     assert sleeps == []
+
+
+async def test_503_then_definitive_401_refuses_with_reason_after_one_retry():
+    """T2-1: a transient 503 retries; the following 401 is DEFINITIVE — a
+    refused receipt (arm 1) after exactly one backoff sleep (arm 2)."""
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport(
+        [httpx.Response(503), httpx.Response(401, json={"detail": "invalid key"})]
+    )
+    sleep, sleeps = _sleeper()
+    publisher = HttpPublisher(_target(), transport=transport, sleeper=sleep, max_attempts=5)
+    receipt = await publisher.publish(_envelope())
+    assert not receipt.accepted
+    assert "HTTP 401" in receipt.reason
+    assert len(calls) == 2
+    assert sleeps == [0.5]
+
+
+async def test_connect_error_then_2xx_succeeds_after_one_retry():
+    """T2-2: a transport-level ConnectError retries; the follow-up 2xx is an
+    accepted receipt (arm 1) after exactly one backoff sleep (arm 2)."""
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport(
+        [httpx.ConnectError("synthetic connection failure"), _accepted_response()]
+    )
+    sleep, sleeps = _sleeper()
+    publisher = HttpPublisher(_target(), transport=transport, sleeper=sleep, max_attempts=5)
+    receipt = await publisher.publish(_envelope())
+    assert receipt.accepted
+    assert len(calls) == 2
+    assert sleeps == [0.5]
+
+
+def test_zero_max_attempts_refused_at_construction():
+    """T2-10: max_attempts=0 could never send anything — refuse loudly."""
+    pytest.importorskip("httpx")
+
+    with pytest.raises(ValueError, match="max_attempts"):
+        HttpPublisher(_target(), max_attempts=0)
+
+
+async def test_unpublish_503_then_404_is_idempotent_success_with_backoff():
+    """T2-11: unpublish retries the 503, then treats the 404 as already-gone
+    success (arm 1: returns None; arm 2: exactly one sleep, two calls)."""
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport(
+        [httpx.Response(503), httpx.Response(404, json={"detail": "not found"})]
+    )
+    sleep, sleeps = _sleeper()
+    publisher = HttpPublisher(_target(), transport=transport, sleeper=sleep, max_attempts=3)
+    assert await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3") is None
+    assert len(calls) == 2
+    assert sleeps == [0.5]
 
 
 async def test_exhausted_5xx_raises_transport_error():
@@ -491,6 +557,52 @@ async def test_inprocess_public_surface_true_gates_rx():
 
 
 # --------------------------------------------------------------------------- #
+# QG round-2 T2-6 / T2-12 — InProcessPublisher: unpublish delegation + the
+# callback's PublishReceipt passes through as-is
+# --------------------------------------------------------------------------- #
+
+
+async def test_inprocess_unpublish_invokes_remove_callback_once_with_scope_and_key():
+    """T2-6 arm 1: the injected remove_callback gets exactly one call, with
+    (user_scope, metric_key)."""
+    removed: list[tuple[str, str]] = []
+
+    async def callback(envelope):
+        return {"accepted": True, "metric_key": envelope.spec.metric_key, "reason": "pinned"}
+
+    async def remove(user_scope: str, metric_key: str) -> None:
+        removed.append((user_scope, metric_key))
+
+    publisher = InProcessPublisher(callback, public_surface=False, remove_callback=remove)
+    assert await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3") is None
+    assert removed == [(SCOPE, "sig_sleep_quality_a1b2c3")]
+
+
+async def test_inprocess_unpublish_without_remove_callback_raises_notimplemented():
+    """T2-6 arm 2: no remove_callback → a loud NotImplementedError, never a
+    silent no-op that pretends to have removed something."""
+
+    async def callback(envelope):
+        return {"accepted": True, "metric_key": envelope.spec.metric_key, "reason": "pinned"}
+
+    publisher = InProcessPublisher(callback, public_surface=False)
+    with pytest.raises(NotImplementedError):
+        await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3")
+
+
+async def test_inprocess_callback_returning_real_receipt_passes_through_as_is():
+    """T2-12: a callback that already answers with a PublishReceipt gets it
+    returned IDENTICALLY (no re-validation copy)."""
+    receipt = PublishReceipt(accepted=True, metric_key="sig_sleep_quality_a1b2c3", reason="pinned")
+
+    async def callback(envelope):
+        return receipt
+
+    publisher = InProcessPublisher(callback, public_surface=False)
+    assert (await publisher.publish(_envelope())) is receipt
+
+
+# --------------------------------------------------------------------------- #
 # QG SEC-4 — the api key never leaks via dumps or str
 # --------------------------------------------------------------------------- #
 
@@ -521,6 +633,99 @@ async def test_oversized_2xx_body_raises_transport_error():
     with pytest.raises(PublishTransportError, match="cap"):
         await publisher.publish(_envelope())
     assert len(calls) == 1
+
+
+# --------------------------------------------------------------------------- #
+# QG round-2 CAP — the SEC-5 cap applies AT READ TIME (streaming), on every
+# attempt: a lying Content-Length can't smuggle an oversized body into memory,
+# and an honest-but-huge body aborts mid-read, never after full buffering.
+# --------------------------------------------------------------------------- #
+
+
+def _recording_stream(chunks: tuple[bytes, ...]):
+    """An httpx response byte-stream that records whether it was consumed.
+
+    Must subclass ``httpx.AsyncByteStream`` (the AsyncClient asserts the
+    stream type) — built lazily so the module imports without httpx.
+    """
+    httpx = pytest.importorskip("httpx")
+
+    class _RecordingStream(httpx.AsyncByteStream):
+        def __init__(self, chunks: tuple[bytes, ...]) -> None:
+            self.chunks = chunks
+            self.consumed = False
+            self.chunks_yielded = 0
+
+        async def __aiter__(self):
+            self.consumed = True
+            for chunk in self.chunks:
+                self.chunks_yielded += 1
+                yield chunk
+
+        async def aclose(self) -> None:  # pragma: no cover - httpx cleanup hook
+            pass
+
+    return _RecordingStream(chunks)
+
+
+async def test_big_declared_content_length_refused_before_any_read():
+    """T2-5a: a huge DECLARED Content-Length fast-fails pre-read — the body
+    (however small it actually is) is never even iterated."""
+    httpx = pytest.importorskip("httpx")
+
+    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+
+    body = _recording_stream((b"tiny",))
+    transport, calls = _mock_transport(
+        [
+            httpx.Response(
+                200,
+                headers={"Content-Length": str(MAX_RESPONSE_BYTES + 1)},
+                stream=body,
+            )
+        ]
+    )
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(PublishTransportError, match="cap"):
+        await publisher.publish(_envelope())
+    assert len(calls) == 1
+    assert body.consumed is False  # refused BEFORE any read
+
+
+async def test_oversized_actual_body_without_content_length_refused_at_read():
+    """T2-5b: absent/small Content-Length + oversized ACTUAL body aborts at
+    read time (over-cap mid-stream), never after full buffering."""
+    httpx = pytest.importorskip("httpx")
+
+    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+
+    half = MAX_RESPONSE_BYTES // 2 + 1024
+    body = _recording_stream((b"x" * half, b"x" * half, b"x" * half))
+    transport, calls = _mock_transport([httpx.Response(200, stream=body)])  # no CL header
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(PublishTransportError, match="cap"):
+        await publisher.publish(_envelope())
+    assert len(calls) == 1
+    assert body.consumed is True  # the read started —
+    assert body.chunks_yielded < 3  # — and aborted over-cap MID-stream
+
+
+async def test_cap_applies_to_5xx_retry_bodies_too():
+    """The cap runs on EVERY attempt — an oversized 5xx body aborts instead
+    of being buffered as retry fodder."""
+    httpx = pytest.importorskip("httpx")
+
+    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+
+    half = MAX_RESPONSE_BYTES // 2 + 1024
+    body = _recording_stream((b"x" * half, b"x" * half, b"x" * half))
+    transport, calls = _mock_transport([httpx.Response(503, stream=body)])
+    sleep, sleeps = _sleeper()
+    publisher = HttpPublisher(_target(), transport=transport, sleeper=sleep, max_attempts=3)
+    with pytest.raises(PublishTransportError, match="cap"):
+        await publisher.publish(_envelope())
+    assert len(calls) == 1
+    assert sleeps == []
 
 
 # --------------------------------------------------------------------------- #

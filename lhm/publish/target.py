@@ -39,6 +39,15 @@ class SyntropyTarget(BaseModel):
     surface — an Rx-input metric refuses such targets STRUCTURALLY (§5.3:
     the claim gate raises before any transport).
 
+    **CALLER DUTY — the default ``public_surface=False`` is a DECLARATION,
+    not a detection.** It states the target is a USER-PRIVATE surface. If
+    the target actually renders anywhere public or marketed (a shared
+    dashboard, a landing page, an embed), you MUST set
+    ``public_surface=True`` yourself — otherwise the Rx structural refusal
+    CANNOT fire at publish time and an Rx-input metric will cross the wire.
+    The consuming backend's render gate remains the backstop, but publish-
+    time protection is only as honest as this flag.
+
     ``allow_insecure`` (default ``False``) is the ONLY way to point a target
     at a non-loopback plain-``http`` URL — the ``X-Syntropy-Key`` header
     would otherwise cross the network in cleartext.

@@ -33,8 +33,12 @@ dashboard you own.
 ```bash
 pip install lhm                # core: clinical mapping + pipeline + contracts
 pip install "lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
-pip install "lhm[stats]"       # + numerical estimators (v2 — see roadmap)
 pip install "lhm[publish]"     # + the HTTP publisher (httpx transport)
+
+# pip install "lhm[stats]"     # v2 — not yet published; the numerical-
+#                              # estimator extra ships with the v2 estimators
+#                              # (see the roadmap below). Installing it today
+#                              # would fail: the extra does not exist yet.
 ```
 
 Core stays lean by design: `fhir.resources` (typed FHIR R4B, pydantic v2) and

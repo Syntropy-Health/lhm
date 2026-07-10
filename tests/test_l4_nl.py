@@ -259,6 +259,35 @@ async def test_whole_token_matching_still_binds_real_records():
 
 
 # --------------------------------------------------------------------------- #
+# QG round-2 T2-4 — order matching via the curated CODE, and the empty-code
+# short-circuit
+# --------------------------------------------------------------------------- #
+
+
+async def test_code_only_match_binds_order():
+    """T2-4 arm 1: a query that misses the display but matches the order's
+    curated CODE still binds ("magnesium" → code="magnesium")."""
+    adapter = RecordAdapter(
+        orders=(_order("Some Opaque Brand", code="magnesium"),),
+        series=(_series(values=(1.0, 2.0)),),
+    )
+    resolved = await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+    assert tuple(o.item_display for o in resolved.orders) == ("Some Opaque Brand",)
+
+
+async def test_empty_code_short_circuits_and_refuses_cleanly():
+    """T2-4 arm 2: the default code="" short-circuits the code branch — a
+    non-matching display refuses with the TYPED error, never crashes."""
+    adapter = RecordAdapter(
+        orders=(_order("Some Opaque Brand"),),  # code="" (default)
+        series=(_series(values=(1.0, 2.0)),),
+    )
+    with pytest.raises(UnresolvableIntentError) as exc:
+        await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+    assert exc.value.kind == "input"
+
+
+# --------------------------------------------------------------------------- #
 # QG CODE-2 — ambiguity refuses (never merge distinct substances/series)
 # --------------------------------------------------------------------------- #
 
@@ -295,6 +324,58 @@ async def test_repeated_same_display_orders_are_not_ambiguous():
     intent = MetricIntent(input_query="vitamin d3", outcome_query="sleep quality")
     resolved = await resolve_intent(intent, adapter, user_scope=SCOPE)
     assert len(resolved.orders) == 3
+
+
+async def test_same_display_different_code_series_refuse_as_ambiguous():
+    """C2-1: distinctness keys on the DOWNSTREAM identity (kind, display).
+
+    A wearable-coded and a journal-coded series can share a display ("Sleep
+    quality") yet become two DIFFERENT OutcomeRef identities in fetch
+    (kind derives from the code) — binding both under one metric would merge
+    distinct downstream series. Must refuse, never merge.
+    """
+    from lhm.nl import AmbiguousIntentError
+
+    wearable = SeriesRecord(
+        subject_ref=SCOPE,
+        metric_display="Sleep quality",
+        code="wearable-metric",
+        points=(SeriesPoint(observed_at=SYNTHETIC_EPOCH, value=1.0),),
+    )
+    journal = SeriesRecord(
+        subject_ref=SCOPE,
+        metric_display="Sleep quality",
+        code="",  # → journal_series downstream
+        points=(SeriesPoint(observed_at=SYNTHETIC_EPOCH, value=2.0),),
+    )
+    adapter = RecordAdapter(orders=(_order(),), series=(wearable, journal))
+    with pytest.raises(AmbiguousIntentError) as exc:
+        await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+    err = exc.value
+    assert err.kind == "outcome"
+    assert "2" in str(err)  # two distinct downstream identities
+    assert "Sleep quality" not in str(err)  # C9: displays never in the message
+    assert tuple(err.matched_displays) == ("Sleep quality", "Sleep quality")
+
+
+async def test_same_display_same_code_series_repeats_still_bind():
+    """C2-1 keep-arm: same-display + SAME-code multiplicity is ONE downstream
+    identity — repeats bind fine (no false ambiguity)."""
+    a = SeriesRecord(
+        subject_ref=SCOPE,
+        metric_display="Sleep quality",
+        code="wearable-metric",
+        points=(SeriesPoint(observed_at=SYNTHETIC_EPOCH, value=1.0),),
+    )
+    b = SeriesRecord(
+        subject_ref=SCOPE,
+        metric_display="Sleep quality",
+        code="wearable-metric",
+        points=(SeriesPoint(observed_at=SYNTHETIC_EPOCH + timedelta(days=1), value=2.0),),
+    )
+    adapter = RecordAdapter(orders=(_order(),), series=(a, b))
+    resolved = await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+    assert len(resolved.series) == 2
 
 
 async def test_ambiguous_outcome_query_refuses_typed():
@@ -480,6 +561,43 @@ async def test_ask_publish_via_mock_transport_end_to_end():
     assert receipt.dashboard_url is not None
     assert len(requests) == 1
     assert requests[0].url.path == "/api/lhm/v1/metrics"
+
+
+async def test_mutated_banned_suggestion_hard_raises_and_never_touches_transport():
+    """T2-7: a hand-mutated (banned-lexicon) best suggestion reaching
+    ``AskResult.publish`` is a PROGRAMMING error — ClaimScopeError propagates
+    (arm 1) and the transport is never called (arm 2)."""
+    import dataclasses
+
+    httpx = pytest.importorskip("httpx")
+
+    from lhm.metrics.claims import ClaimScopeError
+    from lhm.publish import HttpPublisher
+
+    result = await ask(
+        "magnesium vs sleep",
+        adapter=_contrast_adapter(),
+        interpreter=StubInterpreter(INTENT),
+        user_scope=SCOPE,
+    )
+    mutated_best = result.suggestions[0].model_copy(
+        update={"label": "Magnesium improves sleep quality"}  # banned lexicon
+    )
+    tampered = dataclasses.replace(result, suggestions=(mutated_best, *result.suggestions[1:]))
+
+    calls: list = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200, json={"accepted": True, "metric_key": "sig_x", "reason": "pinned"}
+        )
+
+    target = SyntropyTarget(base_url="https://j.example.org")
+    publisher = HttpPublisher(target, transport=httpx.MockTransport(handler))
+    with pytest.raises(ClaimScopeError):
+        await tampered.publish(target, publisher=publisher)
+    assert calls == []  # nothing crossed the transport
 
 
 async def test_ask_publish_refuses_when_nothing_persistable():

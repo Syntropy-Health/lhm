@@ -67,6 +67,16 @@ such targets **structurally**: the claim gate raises before any transport,
 so no byte of an Rx metric can leave the process toward a public surface
 (see the demo at the bottom, and [the honesty layer](honesty-layer.md)).
 
+> **⚠️ Caller duty — the default is a declaration, not a detection.**
+> `public_surface` defaults to `False`, which **declares a USER-PRIVATE
+> surface**. The SDK cannot know where your target actually renders. If
+> the destination is public or marketed in any way — a shared dashboard, a
+> landing page, an embedded card — you **MUST** set `public_surface=True`
+> on the target (and on `InProcessPublisher`), or the Rx structural
+> refusal cannot fire at publish time and an Rx-input metric will reach
+> the backend. The backend's render gate remains the backstop, but the
+> publish-time guarantee is only as honest as this flag.
+
 ## The envelope and the receipt
 
 `PublishEnvelope` is everything a backend needs to surface one metric —

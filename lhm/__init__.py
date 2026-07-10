@@ -16,6 +16,7 @@ directly; the submodule layout is an implementation detail.
 
 from lhm.ask import DEFAULT_USER_SCOPE, AskResult, ask
 from lhm.contracts.viz import VizPayload, VizPoint, export_schema, to_viz_payload
+from lhm.errors import LhmError
 from lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
 from lhm.metrics.spec import (
     CorrectionResult,
@@ -82,6 +83,7 @@ __all__ = [
     "InputRef",
     "Interpreter",
     "LhmAdapter",
+    "LhmError",
     "ManageOutcome",
     "MappingError",
     "MetricIntent",

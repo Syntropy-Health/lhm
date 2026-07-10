@@ -5,7 +5,7 @@ data models designed here; `lhm.nl` (`MetricIntent`, `Interpreter`,
 `resolve_intent`), `lhm.publish` (`PublishEnvelope`, `SyntropyTarget`,
 `HttpPublisher`, `InProcessPublisher`), and `lhm.ask` now ship in the SDK,
 contract-tested against the app's `/api/lhm/v1/metrics` route. This document
-remains the commitment surface the README and the docs site wire against.
+remains the commitment surface the README and the guide tree wire against.
 
 ---
 
@@ -71,7 +71,7 @@ entirely and construct `MetricIntent` by hand — the NL layer is sugar, never
 load-bearing).
 
 ```python
-class MetricIntent(BaseModel):            # lhm.nl (PLANNED, L4)
+class MetricIntent(BaseModel):            # lhm.nl (SHIPPED, L4)
     """The structured reading of the user's question — LLM-OUTPUT-SHAPED,
     but constructible by hand (the NL layer is optional sugar)."""
     input_query:   str          # what the user consumes ("magnesium")
@@ -79,7 +79,7 @@ class MetricIntent(BaseModel):            # lhm.nl (PLANNED, L4)
     window_days:   int = 90     # analysis window
     raw_prompt:    str = ""     # provenance (never leaves the process — C9)
 
-class Interpreter(Protocol):              # lhm.nl (PLANNED, L4)
+class Interpreter(Protocol):              # lhm.nl (SHIPPED, L4)
     async def interpret(self, prompt: str) -> MetricIntent: ...
 ```
 
@@ -101,7 +101,7 @@ alignment, corrections, tiering, the claim gate — is SDK-owned.
 ### 5.1 The envelope (the data model that crosses the wire)
 
 ```python
-class PublishEnvelope(BaseModel):         # lhm.publish (PLANNED, L3/L4)
+class PublishEnvelope(BaseModel):         # lhm.publish (SHIPPED, L4)
     """Everything a syntropy-journal backend needs to surface one metric.
 
     Versioned like the viz contract: additive-only within v1."""
@@ -139,15 +139,14 @@ class PublishReceipt(BaseModel):
     reason:      str = ""
 ```
 
-Two shipped-with-SDK implementations (PLANNED):
+Two shipped-with-SDK implementations (SHIPPED, L4):
 
 - **`HttpPublisher`** — POSTs the envelope to
-  `{base_url}/api/lhm/v1/metrics` (self-hosted journals; the L3 build adds
-  this route app-side). Auth (shipped surface): the `X-Syntropy-Key` header only — a
-  session/service-token path is a POSSIBLE post-L4/U3 addition, not built. The
-  **API key** header (`X-Syntropy-Key`) when `api_key` is set, which is the
-  ENTIRE difference between self-hosted and cloud (U3). Same envelope, same
-  route shape, hosted base_url.
+  `{base_url}/api/lhm/v1/metrics` (self-hosted journals; the route landed
+  app-side in L3). Auth (shipped surface): the `X-Syntropy-Key` API-key
+  header when `api_key` is set — the ENTIRE difference between self-hosted
+  and cloud (U3: same envelope, same route shape, hosted base_url); a
+  session/service-token path is a POSSIBLE post-L4/U3 addition, not built.
 - **`InProcessPublisher`** — the U2 path: no HTTP; hands the envelope to an
   injected app callback (the journals MCP `manage_metrics` wrapper). This is
   how the Shrine chat publishes today's L2 `ManageOutcome` — the envelope
@@ -192,8 +191,8 @@ clinical deps, no copyleft — re-verified by the R7 NOTICE gate each release.
 
 | Phase | Ships |
 |---|---|
-| L3 (next, on L2 land) | journals adapters + `CustomMetric` store + MCP wrappers + dashboard binding + the app-side `/api/lhm/v1/metrics` route stub |
-| L4 (docs pillar) | MkDocs site; `lhm.nl` (`MetricIntent`, `Interpreter`, `resolve_intent`) + `lhm.publish` (envelope, target, `HttpPublisher`, `InProcessPublisher`) as SHAPES with stub transports; quickstart built on `lhm.ask` |
+| L3 (SHIPPED) | journals adapters + `CustomMetric` store + MCP wrappers + dashboard binding + the app-side `/api/lhm/v1/metrics` route |
+| L4 (SHIPPED) | `lhm.nl` with the WORKING deterministic binder (`MetricIntent`, `Interpreter`, `resolve_intent`) + `lhm.publish` with the real httpx `HttpPublisher` (retry/backoff, size-capped reads) and `InProcessPublisher`; `lhm.ask`; the plain-Markdown guide tree under `docs/` (no MkDocs site, no stub transports) |
 | v2 | real estimators (`lhm[stats]`), tier cutoffs ratified, `lhm.ask` end-to-end against a live journals backend |
 | commercial | hosted dashboard + API-key issuance (same contract; ops/product scope) |
 

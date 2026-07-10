@@ -30,6 +30,7 @@ import re
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 from urllib.parse import quote
 
+from lhm.errors import LhmError
 from lhm.metrics.claims import assert_claim_safe
 from lhm.metrics.spec import METRIC_KEY_MAX_LENGTH, METRIC_KEY_PATTERN
 from lhm.publish.envelope import PublishEnvelope, PublishReceipt
@@ -40,8 +41,10 @@ _MISSING_HTTPX_MSG = (
     'install it with: pip install "lhm[publish]"'
 )
 
-#: Cap on any response body the publisher will parse (SEC-5): a receipt is
-#: a few hundred bytes; anything bigger is broken or hostile.
+#: Cap on any response body the publisher will read (SEC-5): a receipt is a
+#: few hundred bytes; anything bigger is broken or hostile. Enforced AT READ
+#: TIME on every attempt — a declared Content-Length over the cap refuses
+#: before any read, and an actual body over it aborts mid-stream.
 MAX_RESPONSE_BYTES = 1024 * 1024  # 1 MiB
 
 _METRIC_KEY_RE = re.compile(METRIC_KEY_PATTERN)
@@ -71,7 +74,7 @@ def _require_httpx() -> Any:
     return httpx
 
 
-class PublishTransportError(RuntimeError):
+class PublishTransportError(RuntimeError, LhmError):
     """Transport exhausted its retries — the caller may replay later.
 
     Replays are safe: the envelope carries a deterministic idempotency key
@@ -152,7 +155,8 @@ class HttpPublisher:
         The server answered 2xx, so it MAY have persisted: a refused receipt
         would lie. :class:`PublishTransportError` keeps the at-least-once /
         safe-to-replay semantics (the envelope is idempotency-keyed). The
-        body is size-capped (SEC-5) before any parse.
+        SEC-5 size cap is enforced AT READ TIME in :meth:`_read_capped`; the
+        re-checks here are defense-in-depth for any future non-streamed path.
         """
         declared = response.headers.get("Content-Length", "")
         if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
@@ -191,12 +195,43 @@ class HttpPublisher:
                 f"unpublish refused with HTTP {response.status_code} for {metric_key!r}"
             )
 
+    async def _read_capped(self, response: Any) -> bytes:
+        """Buffer a streamed response body, enforcing the SEC-5 cap AT READ
+        TIME — runs on EVERY attempt (5xx retry bodies included).
+
+        - Content-Length fast-fail: a declared size over the cap refuses
+          BEFORE a single body byte is read (a lying header can't make us
+          start buffering a hostile body).
+        - Read-time abort: the accumulator raises the moment it crosses
+          ``MAX_RESPONSE_BYTES`` — never after full buffering, so an
+          unbounded/undeclared body can occupy at most cap + one chunk.
+        """
+        declared = response.headers.get("Content-Length", "")
+        if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+            raise PublishTransportError(
+                f"publish response declares {declared} bytes — over the "
+                f"{MAX_RESPONSE_BYTES}-byte cap; refusing to read (safe to replay)"
+            )
+        buffered = bytearray()
+        async for chunk in response.aiter_bytes():
+            buffered += chunk
+            if len(buffered) > MAX_RESPONSE_BYTES:
+                raise PublishTransportError(
+                    f"publish response body exceeds the {MAX_RESPONSE_BYTES}-byte cap — "
+                    "aborting the read (safe to replay)"
+                )
+        return bytes(buffered)
+
     async def _send(self, method: str, url: str, body: dict[str, Any]) -> Any:
         """At-least-once request with capped exponential backoff.
 
-        Retries transport errors and 5xx; returns the first definitive
-        response (2xx/3xx/4xx). Raises :class:`PublishTransportError` when
-        every attempt was retryable.
+        Streams every response and buffers it through :meth:`_read_capped`
+        (SEC-5: the cap applies at read time, on every attempt). Retries
+        transport errors and 5xx; returns the first definitive response
+        (2xx/3xx/4xx) with its capped body pre-buffered. Raises
+        :class:`PublishTransportError` when every attempt was retryable, or
+        immediately on an over-cap body (never retried — the cap is a
+        refusal, not a transient).
         """
         httpx = self._httpx
         delay = self._backoff_base_s
@@ -207,14 +242,22 @@ class HttpPublisher:
                     timeout=self._target.timeout_s,
                     transport=self._transport,
                 ) as client:
-                    response = await client.request(
+                    async with client.stream(
                         method, url, json=body, headers=self._target.headers()
-                    )
+                    ) as response:
+                        # PublishTransportError is a RuntimeError — it flies
+                        # past the TransportError arm below and aborts publish.
+                        content = await self._read_capped(response)
             except httpx.TransportError:
                 last_status = None
             else:
                 if response.status_code < 500:
-                    return response
+                    return httpx.Response(
+                        status_code=response.status_code,
+                        headers=response.headers,
+                        content=content,
+                        request=response.request,
+                    )
                 last_status = response.status_code
             if attempt < self._max_attempts:
                 await self._sleeper(delay)

@@ -15,6 +15,14 @@ never bind "environment score" — binding the WRONG real record is worse
 than a refusal. A query matching MORE THAN ONE distinct record refuses too
 (:class:`AmbiguousIntentError`) — the binder never merges distinct
 substances/series under one metric.
+
+KNOWN LIMITATION (deliberate, safe direction): tokenization is
+ASCII-alphanumeric only (``[a-z0-9]+`` after casefold). Non-Latin display
+names or queries (Cyrillic, CJK, Greek, …) produce EMPTY token sets and
+therefore never match — they refuse-by-construction with
+:class:`UnresolvableIntentError` rather than risking a wrong binding.
+Adapters with non-Latin record names need an ASCII-transliterated display
+(or hand-built resolution) until the tokenizer grows Unicode support.
 """
 
 from __future__ import annotations
@@ -25,14 +33,15 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Sequence
 
+from lhm.errors import LhmError
 from lhm.models.mapping import OrderRecord, RegimenStartRecord, SeriesRecord, _require_aware
 from lhm.nl.intent import MetricIntent
-from lhm.tools.pipeline import LhmAdapter
+from lhm.tools.pipeline import LhmAdapter, outcome_kind_for_code
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
-class UnresolvableIntentError(LookupError):
+class UnresolvableIntentError(LookupError, LhmError):
     """Typed refusal: an intent query matched NO adapter record (D10).
 
     Carries which side failed (``kind``), the query text, and the displays
@@ -51,7 +60,7 @@ class UnresolvableIntentError(LookupError):
         )
 
 
-class AmbiguousIntentError(LookupError):
+class AmbiguousIntentError(LookupError, LhmError):
     """Typed refusal: an intent query matched >1 DISTINCT adapter record.
 
     Silently merging distinct substances/series under one metric would make
@@ -158,9 +167,12 @@ async def resolve_intent(
       windowed to the intent's ``window_days``.
     - Either side unresolvable → :class:`UnresolvableIntentError` (typed
       refusal, never a guess).
-    - Either side matching >1 DISTINCT display/series →
-      :class:`AmbiguousIntentError` (typed refusal, never a merge).
-      Same-display repeats (e.g. re-purchases) are ONE substance — fine.
+    - Either side matching >1 DISTINCT record →
+      :class:`AmbiguousIntentError` (typed refusal, never a merge). Input
+      distinctness keys on the display; outcome distinctness keys on the
+      downstream series identity ``(kind, metric_display)`` — the same
+      identity ``fetch`` builds its ``OutcomeRef`` from. Same-identity
+      repeats (e.g. re-purchases) are ONE substance/series — fine.
     """
     orders = tuple(await adapter.read_orders(user_scope))
     starts = tuple(await adapter.read_regimen_starts(user_scope))
@@ -191,12 +203,23 @@ async def resolve_intent(
         raise UnresolvableIntentError(
             "outcome", intent.outcome_query, tuple(rec.metric_display for rec in series)
         )
-    # ``metric_display`` IS the pipeline's series_key (fetch builds
-    # ``OutcomeRef(series_key=rec.metric_display)``) — distinctness here is
-    # distinctness of the downstream series identity.
-    distinct_outcomes = tuple(dict.fromkeys(rec.metric_display for rec in matched_series))
+    # Distinctness keys on the SAME identity ``fetch`` gives each series
+    # downstream: ``OutcomeRef(kind=outcome_kind_for_code(rec.code),
+    # series_key=rec.metric_display)``. Display alone is NOT that identity —
+    # a wearable-coded and a journal-coded series can share a display yet
+    # become two different downstream series; binding both would merge them
+    # under one metric. Same-(kind, display) repeats stay one identity.
+    distinct_outcomes = tuple(
+        dict.fromkeys(
+            (outcome_kind_for_code(rec.code), rec.metric_display) for rec in matched_series
+        )
+    )
     if len(distinct_outcomes) > 1:
-        raise AmbiguousIntentError("outcome", intent.outcome_query, distinct_outcomes)
+        raise AmbiguousIntentError(
+            "outcome",
+            intent.outcome_query,
+            tuple(display for _kind, display in distinct_outcomes),
+        )
 
     return ResolvedIntent(
         user_scope=user_scope,

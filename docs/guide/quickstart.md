@@ -16,7 +16,10 @@ covered in [Natural language & `lhm.ask`](nl-and-ask.md).
 pip install lhm                # core: clinical mapping + pipeline + contracts
 pip install "lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
 pip install "lhm[publish]"     # + the HTTP publisher (httpx transport)
-pip install "lhm[stats]"       # + numerical estimators (v2 — hooks in place)
+
+# pip install "lhm[stats]"     # v2 — not yet published (the numerical-
+#                              # estimator extra arrives with the v2
+#                              # estimators; it does not exist today)
 ```
 
 Core is lean by design: `fhir.resources` (typed FHIR R4B on pydantic v2) and

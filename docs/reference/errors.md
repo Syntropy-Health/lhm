@@ -6,13 +6,37 @@ guarantee fired. None of the SDK's error messages ever carry payload text,
 notes, or identifiers (C9) — diagnostics that could be sensitive ride
 exception *attributes* for in-process use only.
 
-| Exception | Base | Raised by |
+| Exception | Bases | Raised by |
 |---|---|---|
-| `ClaimScopeError` | `ValueError` | `assert_claim_safe` — via `manage`, `to_viz_payload`, every publisher |
-| `MappingError` | `ValueError` | `map_order` / `map_regimen_start` / `map_series`, and the tz/opacity boundary checks in `fetch` and the binder |
-| `UnresolvableIntentError` | `LookupError` | `resolve_intent` / `lhm.ask` |
-| `AmbiguousIntentError` | `LookupError` | `resolve_intent` / `lhm.ask` |
-| `PublishTransportError` | `RuntimeError` | `HttpPublisher.publish` / `.unpublish` |
+| `LhmError` | `Exception` | never raised directly — the root every SDK refusal below mixes in |
+| `ClaimScopeError` | `ValueError`, `LhmError` | `assert_claim_safe` — via `manage`, `to_viz_payload`, every publisher |
+| `MappingError` | `ValueError`, `LhmError` | `map_order` / `map_regimen_start` / `map_series`, and the tz/opacity boundary checks in `fetch` and the binder |
+| `UnresolvableIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `lhm.ask` |
+| `AmbiguousIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `lhm.ask` |
+| `PublishTransportError` | `RuntimeError`, `LhmError` | `HttpPublisher.publish` / `.unpublish` |
+
+## `LhmError` — the root of every SDK refusal
+
+Every public LHM exception subclasses `lhm.LhmError` **in addition to** its
+original stdlib base (multiple inheritance, additive-only):
+
+```python
+import lhm
+
+try:
+    result = await lhm.ask(prompt, adapter=adapter, interpreter=interpreter)
+    await result.publish(target)
+except lhm.LhmError as refusal:
+    ...  # any typed SDK refusal — binder, claim gate, mapping, transport
+```
+
+- `except LhmError` catches **any** of the five refusals in one clause —
+  useful at an app boundary that just needs "the SDK said no".
+- The original stdlib bases are preserved, so pre-existing
+  `except ValueError` / `LookupError` / `RuntimeError` clauses keep working
+  unchanged.
+- `LhmError` derives from `Exception` only — catching it never absorbs
+  unrelated stdlib `ValueError`s / `LookupError`s.
 
 ## `ClaimScopeError`
 

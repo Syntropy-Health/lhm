@@ -25,6 +25,13 @@ dependencies = [
     "fhir.resources==8.3.0",
 ]
 
+[project.urls]
+# Pre-split home (design 0002: LHM lives inside the journals repo through
+# L4); the D13 repo split updates these to the standalone repo.
+Homepage = "https://github.com/Syntropy-Health/SyntropyJournal"
+Repository = "https://github.com/Syntropy-Health/SyntropyJournal"
+Documentation = "https://github.com/Syntropy-Health/SyntropyJournal/tree/main/LHM/docs"
+
 [project.optional-dependencies]
 # UCUM units for Observation quantities (A&D D2) — optional extra. NOTE
 # (QGR L0 design-F2, recorded A&D deviation): the CORE floor is deliberately

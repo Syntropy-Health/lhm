@@ -42,6 +42,8 @@ from fhir.resources.R4B.observation import Observation
 from fhir.resources.R4B.quantity import Quantity
 from fhir.resources.R4B.reference import Reference
 
+from lhm.errors import LhmError
+
 #: The in-SDK coding system for LHM's curated code table (D2 — no external
 #: terminology dep; codes below are the v0.1 curated set, updated by PR).
 LHM_CODE_SYSTEM = "https://lhm.syntropyhealth.bio/fhir/codes"
@@ -67,7 +69,7 @@ CURATED_CODES: dict[str, str] = {
 SENTIMENT_CODE = "checkin-sentiment"
 
 
-class MappingError(ValueError):
+class MappingError(ValueError, LhmError):
     """A record cannot be mapped — bad/missing fields (fail loud, pure)."""
 
 

@@ -43,6 +43,23 @@ class LhmAdapter(Protocol):
     async def read_outcome_series(self, user_scope: str) -> Sequence[SeriesRecord]: ...
 
 
+def outcome_kind_for_code(
+    code: str,
+) -> Literal["wearable_series", "checkin_sentiment", "journal_series"]:
+    """The ``OutcomeRef.kind`` a series record's curated code derives to.
+
+    SINGLE SOURCE OF TRUTH for the code→kind mapping: :func:`fetch` builds
+    every downstream ``OutcomeRef(kind=..., series_key=rec.metric_display)``
+    through it, and the NL binder keys outcome DISTINCTNESS on the same
+    identity — duplicating the mapping would let the two drift apart.
+    """
+    if code == "wearable-metric":
+        return "wearable_series"
+    if code == "checkin-sentiment":
+        return "checkin_sentiment"
+    return "journal_series"
+
+
 class AlignedPair(BaseModel):
     """One (input-presence, outcome-value) sample at a shared date."""
 
@@ -160,17 +177,13 @@ async def fetch(adapter: LhmAdapter, user_scope: str) -> tuple[AlignedData, ...]
             for p in rec.points
             if p.value is not None
         )
-        if rec.code == "wearable-metric":
-            kind = "wearable_series"
-        elif rec.code == "checkin-sentiment":
-            kind = "checkin_sentiment"
-        else:
-            kind = "journal_series"
         out.append(
             AlignedData(
                 user_scope=user_scope,
                 inputs=input_refs,
-                outcome=OutcomeRef(kind=kind, series_key=rec.metric_display),
+                outcome=OutcomeRef(
+                    kind=outcome_kind_for_code(rec.code), series_key=rec.metric_display
+                ),
                 regimen_start=regimen_start,
                 pairs=pairs,
                 rx_input=rx_input,
@@ -357,4 +370,5 @@ __all__ = [
     "analyze",
     "fetch",
     "manage",
+    "outcome_kind_for_code",
 ]
