@@ -121,6 +121,11 @@ never stores your key.
 | **v2** — real estimators | `lhm[stats]`: AR(1)/detrend/ITS/posterior + FDR in the six hooks; ratified tier cutoffs | 📐 hooks in place |
 | **cloud** — hosted dashboard | API-key issuance, workspaces, the commercial surface | 🗺 vision |
 
+**Packaging:** LHM lives in the syntropy-journal repo through L3 (maximum-
+coupling build phase), then splits to its own repo + PyPI at L4 so
+`pip install lhm` is real and the app consumes it like any dependency —
+decision record: [design 0002](docs/design/0002-packaging-strategy.md).
+
 v0.1 proves shapes and plumbing; the deterministic stubs make every contract
 testable today. The full design for the NL→publish pipeline — use cases,
 dependency tiers (numerical / clinical / models), the publish data models,
