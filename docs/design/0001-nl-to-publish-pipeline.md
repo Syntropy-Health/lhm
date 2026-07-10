@@ -120,10 +120,13 @@ is at-least-once safe by construction.
 ### 5.2 The target + transport
 
 ```python
-class SyntropyTarget(BaseModel):          # lhm.publish (PLANNED)
-    base_url: str                         # self-hosted: your journals URL
-    api_key:  str | None = None           # cloud: the commercial credential
+class SyntropyTarget(BaseModel):          # lhm.publish (SHIPPED)
+    base_url: str                         # https required; plain http only for
+                                          # loopback OR explicit allow_insecure=True
+    api_key:  SecretStr | None = None     # cloud credential — masked in repr/dumps
     timeout_s: float = 10.0
+    public_surface: bool = False          # True ⇒ Rx metrics refuse structurally
+    allow_insecure: bool = False          # explicit opt-in: cleartext key on http
 
 class Publisher(Protocol):
     async def publish(self, envelope: PublishEnvelope) -> PublishReceipt: ...
@@ -147,7 +150,10 @@ Two shipped-with-SDK implementations (PLANNED):
 - **`InProcessPublisher`** — the U2 path: no HTTP; hands the envelope to an
   injected app callback (the journals MCP `manage_metrics` wrapper). This is
   how the Shrine chat publishes today's L2 `ManageOutcome` — the envelope
-  formalizes what crosses that boundary.
+  formalizes what crosses that boundary. `public_surface` is a **required
+  keyword argument** (no default): the Rx/public gate must never default
+  open, so the caller states the surface explicitly —
+  `InProcessPublisher(callback, public_surface=False)`.
 
 ### 5.3 The gate stays in front of the wire
 

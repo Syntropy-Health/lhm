@@ -66,6 +66,14 @@ class AskResult:
         ``publisher`` overrides the default :class:`HttpPublisher(target)`
         (e.g. an :class:`InProcessPublisher`, or an HttpPublisher with an
         injected transport in tests).
+
+        DELIBERATE SDK contract — :class:`lhm.metrics.claims.ClaimScopeError`
+        propagates (hard-raises) rather than returning a refused receipt:
+        suggestions produced by :func:`ask` are claim-safe by construction,
+        so a banned-lexicon candidate reaching this method means a caller
+        hand-built or mutated one — a PROGRAMMING error, not a runtime
+        condition. (The journals app route, by contrast, answers external
+        callers and maps the same gate to a refused receipt.)
         """
         for candidate in self.suggestions:
             outcome = await manage("add", candidate)
@@ -104,7 +112,9 @@ async def ask(
 
     Raises :class:`lhm.nl.UnresolvableIntentError` when the interpreter's
     intent names data the adapter does not actually have (D10 — a
-    hallucinated column cannot become a metric).
+    hallucinated column cannot become a metric), and
+    :class:`lhm.nl.AmbiguousIntentError` when a query spans more than one
+    distinct record (the binder never merges distinct substances/series).
     """
     intent = await interpreter.interpret(prompt)
     resolved = await resolve_intent(intent, adapter, user_scope=user_scope)

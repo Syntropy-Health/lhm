@@ -280,7 +280,7 @@ async def test_inprocess_publisher_gates_then_hands_off():
         seen.append(envelope)
         return {"accepted": True, "metric_key": envelope.spec.metric_key, "reason": "pinned"}
 
-    publisher = InProcessPublisher(callback)
+    publisher = InProcessPublisher(callback, public_surface=False)
     receipt = await publisher.publish(_envelope())
     assert receipt.accepted
     assert len(seen) == 1
@@ -358,6 +358,186 @@ async def test_exhausted_5xx_raises_transport_error():
     with pytest.raises(PublishTransportError, match="HTTP 500"):
         await publisher.publish(_envelope())
     assert len(calls) == 2
+
+
+# --------------------------------------------------------------------------- #
+# QG CODE-3 — malformed 2xx receipt body → PublishTransportError (safe replay)
+# --------------------------------------------------------------------------- #
+
+
+async def test_2xx_with_non_json_body_raises_transport_error_not_jsondecodeerror():
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([httpx.Response(200, text="pinned")])
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(PublishTransportError, match="replay"):
+        await publisher.publish(_envelope())
+    assert len(calls) == 1
+
+
+# --------------------------------------------------------------------------- #
+# QG CODE-7 — unpublish: 404 is an idempotent no-op; 5xx still raises
+# --------------------------------------------------------------------------- #
+
+
+async def test_unpublish_404_is_idempotent_success():
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([httpx.Response(404, json={"detail": "not found"})])
+    publisher = HttpPublisher(_target(), transport=transport)
+    assert await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3") is None
+    assert len(calls) == 1
+
+
+async def test_unpublish_5xx_exhaustion_still_raises():
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([httpx.Response(500)])
+    sleep, _ = _sleeper()
+    publisher = HttpPublisher(_target(), transport=transport, sleeper=sleep, max_attempts=2)
+    with pytest.raises(PublishTransportError):
+        await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3")
+    assert len(calls) == 2
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-1 — unpublish metric_key is validated + escaped; hostile keys never
+# produce a request
+# --------------------------------------------------------------------------- #
+
+
+async def test_unpublish_path_traversal_key_refused_before_any_request():
+    pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([_accepted_response()])
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(ValueError):
+        await publisher.unpublish(SCOPE, "../../admin/purge")
+    assert calls == []
+
+
+async def test_unpublish_query_smuggling_key_refused_before_any_request():
+    pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([_accepted_response()])
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(ValueError):
+        await publisher.unpublish(SCOPE, "k?x=")
+    assert calls == []
+
+
+async def test_unpublish_valid_key_hits_the_expected_path():
+    httpx = pytest.importorskip("httpx")
+
+    transport, calls = _mock_transport([httpx.Response(200, json={})])
+    publisher = HttpPublisher(_target(), transport=transport)
+    await publisher.unpublish(SCOPE, "sig_sleep_quality_a1b2c3")
+    assert len(calls) == 1
+    assert calls[0].url.path == "/api/lhm/v1/metrics/sig_sleep_quality_a1b2c3"
+    assert calls[0].url.query == b""
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-2 — https required; plain http only for loopback or explicit opt-in
+# --------------------------------------------------------------------------- #
+
+
+def test_http_public_host_refused():
+    with pytest.raises(ValidationError, match="http"):
+        SyntropyTarget(base_url="http://api.example.com")
+
+
+def test_http_loopback_hosts_allowed():
+    assert SyntropyTarget(base_url="http://localhost:8000").base_url
+    assert SyntropyTarget(base_url="http://127.0.0.1:8000").base_url
+    assert SyntropyTarget(base_url="http://[::1]:8000").base_url
+
+
+def test_https_allowed_and_allow_insecure_opt_in_permits_http():
+    assert SyntropyTarget(base_url="https://api.example.com").base_url
+    target = SyntropyTarget(base_url="http://api.example.com", allow_insecure=True)
+    assert target.allow_insecure is True
+
+
+def test_non_http_scheme_refused():
+    with pytest.raises(ValidationError):
+        SyntropyTarget(base_url="ftp://api.example.com")
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-3 — InProcessPublisher must be TOLD its surface (no fail-open default)
+# --------------------------------------------------------------------------- #
+
+
+def test_inprocess_publisher_requires_public_surface_kwarg():
+    async def callback(envelope):
+        return {"accepted": True, "metric_key": "sig_x", "reason": "pinned"}
+
+    with pytest.raises(TypeError):
+        InProcessPublisher(callback)  # type: ignore[call-arg]
+
+
+async def test_inprocess_public_surface_true_gates_rx():
+    seen: list[PublishEnvelope] = []
+
+    async def callback(envelope):
+        seen.append(envelope)
+        return {"accepted": True, "metric_key": envelope.spec.metric_key, "reason": "pinned"}
+
+    publisher = InProcessPublisher(callback, public_surface=True)
+    with pytest.raises(ClaimScopeError):
+        await publisher.publish(_envelope(_spec(rx_input=True)))
+    assert seen == []
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-4 — the api key never leaks via dumps or str
+# --------------------------------------------------------------------------- #
+
+
+def test_api_key_never_leaks_via_model_dump_or_str():
+    target = _target(api_key="sk-super-secret")
+    assert "sk-super-secret" not in str(target.model_dump())
+    assert "sk-super-secret" not in str(target.model_dump(mode="json"))
+    assert "sk-super-secret" not in str(target)
+    assert "sk-super-secret" not in repr(target)
+    # ...but the header construction still gets the real value.
+    assert target.headers() == {"X-Syntropy-Key": "sk-super-secret"}
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-5 — response bodies over the 1 MiB cap are refused, not parsed
+# --------------------------------------------------------------------------- #
+
+
+async def test_oversized_2xx_body_raises_transport_error():
+    httpx = pytest.importorskip("httpx")
+
+    huge = '{"accepted": true, "metric_key": "sig_x", "reason": "' + "x" * (2 * 1024 * 1024) + '"}'
+    transport, calls = _mock_transport(
+        [httpx.Response(200, content=huge.encode(), headers={"content-type": "application/json"})]
+    )
+    publisher = HttpPublisher(_target(), transport=transport)
+    with pytest.raises(PublishTransportError, match="cap"):
+        await publisher.publish(_envelope())
+    assert len(calls) == 1
+
+
+# --------------------------------------------------------------------------- #
+# QG SEC-6 — dashboard_url: http(s) only; anything else coerces to None
+# --------------------------------------------------------------------------- #
+
+
+def test_javascript_dashboard_url_coerces_to_none():
+    receipt = PublishReceipt(accepted=True, metric_key="sig_x", dashboard_url="javascript:alert(1)")
+    assert receipt.dashboard_url is None
+
+
+def test_https_dashboard_url_is_preserved():
+    receipt = PublishReceipt(
+        accepted=True, metric_key="sig_x", dashboard_url="https://j.example.org/metrics/sig_x"
+    )
+    assert receipt.dashboard_url == "https://j.example.org/metrics/sig_x"
 
 
 async def test_api_key_rides_the_header():

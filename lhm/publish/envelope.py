@@ -22,6 +22,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -81,7 +82,13 @@ class PublishEnvelope(BaseModel):
 
 
 class PublishReceipt(BaseModel):
-    """What a publish answers with (design 0001 §5.2) — tolerant reader."""
+    """What a publish answers with (design 0001 §5.2) — tolerant reader.
+
+    ``dashboard_url`` is server-controlled text handed to consumers as a
+    clickable link — only ``http(s)`` URLs survive; anything else (e.g. a
+    ``javascript:`` URI) coerces to ``None``. Fail-soft by design: the
+    publish itself succeeded, so a bad link never fails the receipt.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -89,6 +96,13 @@ class PublishReceipt(BaseModel):
     metric_key: str
     dashboard_url: str | None = None  #: deep link to the rendered card
     reason: str = ""
+
+    @field_validator("dashboard_url")
+    @classmethod
+    def _http_links_only(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v if urlsplit(v).scheme.casefold() in ("http", "https") else None
 
 
 def build_envelope(

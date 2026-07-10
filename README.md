@@ -107,7 +107,15 @@ receipt.dashboard_url                            # deep link to the rendered car
 
 Publishing is idempotent (at-least-once safe), claim-gated *before*
 transport, and Rx-tier metrics structurally refuse public surfaces. The SDK
-never stores your key.
+never stores your key (it is held as a `SecretStr` — masked in `repr` and
+every `model_dump`).
+
+Targets must be `https://` — the API key rides a header, and plain `http`
+would send it in cleartext. Plain `http` is accepted only for loopback dev
+hosts (`localhost` / `127.0.0.1` / `[::1]`); anything else needs an explicit
+`SyntropyTarget(..., allow_insecure=True)` opt-in. If you publish in-process
+instead of over HTTP, `InProcessPublisher(callback, public_surface=...)`
+requires the surface declaration — there is no default.
 
 ## Status & roadmap
 

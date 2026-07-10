@@ -216,6 +216,176 @@ async def test_window_days_trims_stale_points():
 
 
 # --------------------------------------------------------------------------- #
+# QG CODE-1 — whole-token matching only (no raw-substring false positives)
+# --------------------------------------------------------------------------- #
+
+
+async def test_iron_does_not_match_environment_substring():
+    """ "iron" is a SUBSTRING of "environment" — must refuse, never bind wrong."""
+    adapter = RecordAdapter(
+        orders=(_order("Environment Monitor"),),
+        series=(_series(values=(1.0, 2.0)),),
+    )
+    intent = MetricIntent(input_query="iron", outcome_query="sleep quality")
+    with pytest.raises(UnresolvableIntentError) as exc:
+        await resolve_intent(intent, adapter, user_scope=SCOPE)
+    assert exc.value.kind == "input"
+
+
+async def test_sleep_does_not_match_sleepiness_epworth():
+    """ "sleep" ⊄ tokens of "Sleepiness (Epworth)" — refusal beats a wrong record."""
+    adapter = RecordAdapter(
+        orders=(_order("Magnesium glycinate"),),
+        series=(_series("Sleepiness (Epworth)", values=(1.0, 2.0)),),
+    )
+    intent = MetricIntent(input_query="magnesium", outcome_query="sleep")
+    with pytest.raises(UnresolvableIntentError) as exc:
+        await resolve_intent(intent, adapter, user_scope=SCOPE)
+    assert exc.value.kind == "outcome"
+
+
+async def test_whole_token_matching_still_binds_real_records():
+    """magnesium↔"Magnesium glycinate" and "vitamin d3"↔"Vitamin D3" still bind."""
+    adapter = RecordAdapter(
+        orders=(_order("Vitamin D3"),),
+        series=(_series("Sleep quality (self-rated)", values=(1.0, 2.0)),),
+    )
+    intent = MetricIntent(input_query="vitamin d3", outcome_query="sleep quality")
+    resolved = await resolve_intent(intent, adapter, user_scope=SCOPE)
+    assert tuple(o.item_display for o in resolved.orders) == ("Vitamin D3",)
+
+    magnesium = await resolve_intent(INTENT, _contrast_adapter(), user_scope=SCOPE)
+    assert tuple(o.item_display for o in magnesium.orders) == ("Magnesium glycinate",)
+
+
+# --------------------------------------------------------------------------- #
+# QG CODE-2 — ambiguity refuses (never merge distinct substances/series)
+# --------------------------------------------------------------------------- #
+
+
+async def test_ambiguous_input_query_refuses_typed():
+    """ "vitamin" matching Vitamin D3 AND Vitamin C must refuse, not merge."""
+    from lhm.nl import AmbiguousIntentError
+
+    adapter = RecordAdapter(
+        orders=(_order("Vitamin D3"), _order("Vitamin C", day=1)),
+        series=(_series(values=(1.0, 2.0)),),
+    )
+    intent = MetricIntent(input_query="vitamin", outcome_query="sleep quality")
+    with pytest.raises(AmbiguousIntentError) as exc:
+        await resolve_intent(intent, adapter, user_scope=SCOPE)
+    err = exc.value
+    assert err.kind == "input"
+    assert err.query == "vitamin"
+    # C9 posture: count + query in the message; candidate displays only on
+    # the attribute, never in the message text.
+    assert "2" in str(err)
+    assert "vitamin" in str(err)
+    assert "Vitamin D3" not in str(err)
+    assert "Vitamin C" not in str(err)
+    assert set(err.matched_displays) == {"Vitamin D3", "Vitamin C"}
+
+
+async def test_repeated_same_display_orders_are_not_ambiguous():
+    """Re-purchases (same display, many orders) are ONE substance — binds fine."""
+    adapter = RecordAdapter(
+        orders=(_order("Vitamin D3"), _order("Vitamin D3", day=3), _order("Vitamin D3", day=9)),
+        series=(_series(values=(1.0, 2.0)),),
+    )
+    intent = MetricIntent(input_query="vitamin d3", outcome_query="sleep quality")
+    resolved = await resolve_intent(intent, adapter, user_scope=SCOPE)
+    assert len(resolved.orders) == 3
+
+
+async def test_ambiguous_outcome_query_refuses_typed():
+    from lhm.nl import AmbiguousIntentError
+
+    adapter = RecordAdapter(
+        orders=(_order(),),
+        series=(
+            _series("Sleep quality (self-rated)", values=(1.0, 2.0)),
+            _series("Sleep depth", values=(3.0, 4.0)),
+        ),
+    )
+    intent = MetricIntent(input_query="magnesium", outcome_query="sleep")
+    with pytest.raises(AmbiguousIntentError) as exc:
+        await resolve_intent(intent, adapter, user_scope=SCOPE)
+    assert exc.value.kind == "outcome"
+    assert "Sleep depth" not in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# QG CODE-4 — naive datetimes refuse with a labeled error, never TypeError
+# --------------------------------------------------------------------------- #
+
+
+async def test_naive_observed_at_raises_labeled_error_not_typeerror():
+    from datetime import datetime
+
+    from lhm.models.mapping import MappingError
+
+    naive_points = (
+        SeriesPoint(observed_at=SYNTHETIC_EPOCH + timedelta(days=1), value=2.0),
+        SeriesPoint(observed_at=datetime(2026, 1, 3, 12, 0), value=3.0),  # naive
+    )
+    adapter = RecordAdapter(
+        orders=(_order(),),
+        series=(
+            SeriesRecord(
+                subject_ref=SCOPE,
+                metric_display="Sleep quality (self-rated)",
+                points=naive_points,
+            ),
+        ),
+    )
+    with pytest.raises(MappingError, match="observed_at.*timezone-aware"):
+        await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+
+
+async def test_all_naive_series_also_refuses_labeled():
+    from datetime import datetime
+
+    from lhm.models.mapping import MappingError
+
+    adapter = RecordAdapter(
+        orders=(_order(),),
+        series=(
+            SeriesRecord(
+                subject_ref=SCOPE,
+                metric_display="Sleep quality (self-rated)",
+                points=(SeriesPoint(observed_at=datetime(2026, 1, 2), value=2.0),),
+            ),
+        ),
+    )
+    with pytest.raises(MappingError, match="timezone-aware"):
+        await resolve_intent(INTENT, adapter, user_scope=SCOPE)
+
+
+# --------------------------------------------------------------------------- #
+# QG CODE-5 — query floor at the model (>=1 token of >=3 chars)
+# --------------------------------------------------------------------------- #
+
+
+def test_single_char_input_query_refused_at_model():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MetricIntent(input_query="d", outcome_query="sleep quality")
+
+
+def test_single_char_outcome_query_refused_at_model():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MetricIntent(input_query="magnesium", outcome_query="d")
+
+
+def test_query_with_one_long_token_passes_the_floor():
+    intent = MetricIntent(input_query="vitamin d3", outcome_query="hrv sleep")
+    assert intent.input_query == "vitamin d3"
+
+
+# --------------------------------------------------------------------------- #
 # lhm.ask — the one-liner composition
 # --------------------------------------------------------------------------- #
 
@@ -255,21 +425,22 @@ async def test_ask_refuses_hallucinated_intent():
 
 
 async def test_ask_suggestions_sorted_best_first():
+    """Two same-display series (same series_key — NOT ambiguous, QG CODE-2)
+    with different contrast: suggestions come back best-first."""
     strong = _contrast_adapter()
-    weak_series = _series(
-        "Sleep depth", values=(1.0, 10.0, 1.0, 10.0, 1.0, 5.4, 5.6, 5.5, 5.5, 5.5)
-    )
+    weak_series = _series(values=(1.0, 10.0, 1.0, 10.0, 1.0, 5.4, 5.6, 5.5, 5.5, 5.5))
     adapter = RecordAdapter(
         orders=strong._orders,
         starts=strong._starts,
         series=(weak_series, *strong._series),
     )
     result = await ask(
-        "magnesium vs sleep",
+        "magnesium vs sleep quality",
         adapter=adapter,
-        interpreter=StubInterpreter(MetricIntent(input_query="magnesium", outcome_query="sleep")),
+        interpreter=StubInterpreter(INTENT),
         user_scope=SCOPE,
     )
+    assert len(result.suggestions) == 2
     scores = [c.fit.fit_score for c in result.suggestions]
     tiers = [c.confidence for c in result.suggestions]
     assert tiers == sorted(tiers, key=lambda t: {"strong": 0, "mid": 1, "low": 2}[t])

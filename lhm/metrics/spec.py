@@ -36,6 +36,12 @@ FitMethod = Literal["stub", "adam", "grid"]
 
 Confidence = Literal["low", "mid", "strong"]
 
+#: The ONE source of truth for the metric-key shape — URL-path-safe by
+#: construction (no ``/``, ``?``, ``#``, ``.`` …). Reused wherever a
+#: metric_key is interpolated into a URL (e.g. the publisher's unpublish).
+METRIC_KEY_PATTERN = r"^[a-z][a-z0-9_]*$"
+METRIC_KEY_MAX_LENGTH = 64
+
 
 class InputRef(BaseModel):
     """One input ("order"/regimen) the metric reads, FHIR-typed (A&D D2)."""
@@ -114,7 +120,9 @@ class MetricSpec(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    metric_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    metric_key: str = Field(
+        min_length=1, max_length=METRIC_KEY_MAX_LENGTH, pattern=METRIC_KEY_PATTERN
+    )
     label: str = Field(min_length=1, max_length=200)
     inputs: tuple[InputRef, ...] = Field(min_length=1)
     outcome: OutcomeRef
@@ -128,6 +136,8 @@ class MetricSpec(BaseModel):
 
 
 __all__ = [
+    "METRIC_KEY_MAX_LENGTH",
+    "METRIC_KEY_PATTERN",
     "Confidence",
     "CorrectionResult",
     "FitBlock",

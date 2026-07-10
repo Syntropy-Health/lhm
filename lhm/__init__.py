@@ -35,6 +35,7 @@ from lhm.models.mapping import (
     map_series,
 )
 from lhm.nl import (
+    AmbiguousIntentError,
     Interpreter,
     MetricIntent,
     ResolvedIntent,
@@ -70,6 +71,7 @@ __all__ = [
     "DEFAULT_USER_SCOPE",
     "AlignedData",
     "AlignedPair",
+    "AmbiguousIntentError",
     "AskResult",
     "CandidateSignal",
     "ClaimScopeError",
