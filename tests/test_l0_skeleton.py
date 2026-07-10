@@ -108,6 +108,28 @@ class TestMetricSpec:
         with pytest.raises(ValidationError):
             _spec(unknown_field=1)
 
+    # -- persist→render size caps (additive lhm-publish/v1 tightening) ------
+
+    def test_label_length_capped_at_200(self) -> None:
+        assert _spec(label="x" * 200).label == "x" * 200
+        with pytest.raises(ValidationError):
+            _spec(label="x" * 201)
+
+    def test_metric_key_length_capped_at_64(self) -> None:
+        assert len(_spec(metric_key="a" * 64).metric_key) == 64
+        with pytest.raises(ValidationError):
+            _spec(metric_key="a" * 65)
+
+    def test_caveats_count_capped_at_8(self) -> None:
+        assert len(_spec(caveats=tuple(f"caveat number {i}" for i in range(8))).caveats) == 8
+        with pytest.raises(ValidationError):
+            _spec(caveats=tuple(f"caveat number {i}" for i in range(9)))
+
+    def test_caveat_item_length_capped_at_500(self) -> None:
+        assert _spec(caveats=("y" * 500,)).caveats == ("y" * 500,)
+        with pytest.raises(ValidationError):
+            _spec(caveats=("y" * 501,))
+
 
 # --------------------------------------------------------------------------- #
 # R10 — claim-scope guard

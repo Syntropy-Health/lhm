@@ -18,9 +18,9 @@ payloads (``lhm.contracts.viz``); this module only defines shapes.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 #: FHIR resource kinds an input reference may point at (A&D D2 — the lean
 #: four-resource mapping; ``Observation`` is outcome-side only).
@@ -104,18 +104,26 @@ class MetricSpec(BaseModel):
     (R10). ``rx_input`` is the C1b tier bit — set by the app's ADAPTER from
     the source record type, never by an LLM (A&D D9; unknown sources fail
     CLOSED to ``True``).
+
+    Size caps (additive tightening of ``lhm-publish/v1``): the
+    persist→render path is bounded at the shape — ``metric_key`` ≤ 64,
+    ``label`` ≤ 200, ``caveats`` ≤ 8 items of ≤ 500 chars each. Every
+    previously-valid spec of sane size still validates; only oversized
+    payloads are newly refused.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    metric_key: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
-    label: str = Field(min_length=1)
+    metric_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1, max_length=200)
     inputs: tuple[InputRef, ...] = Field(min_length=1)
     outcome: OutcomeRef
     form: Literal["linear_standardized"] = "linear_standardized"
     fit: FitBlock | None = None
     confidence: Confidence
-    caveats: tuple[str, ...] = Field(min_length=1)
+    caveats: tuple[Annotated[str, StringConstraints(max_length=500)], ...] = Field(
+        min_length=1, max_length=8
+    )
     rx_input: bool
 
 
