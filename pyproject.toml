@@ -35,6 +35,13 @@ units = [
     "pint>=0.25,<0.26",
     "ucumvert>=0.3,<0.4",
 ]
+# HTTP transport for the L4 HttpPublisher (design 0001 §6 / D12: transport
+# arrives as an opt-in extra; httpx is BSD-3-Clause). The envelope/receipt
+# models work WITHOUT it — only HttpPublisher requires the import (lazy,
+# with an error naming this extra).
+publish = [
+    "httpx>=0.27,<1",
+]
 
 [build-system]
 requires = ["setuptools>=69"]

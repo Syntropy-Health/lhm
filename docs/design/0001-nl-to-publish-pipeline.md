@@ -1,10 +1,11 @@
 # LHM Design 0001 — The NL-to-Publish Pipeline
 
-**Status:** PLANNED (principal-directed wireframe, 2026-07-10). Contracts and
-data models designed here; implementation phased per the roadmap below. The
-underlying functionality is intentionally NOT required to exist yet — this
-document is the commitment surface the README, the docs site, and the L3+
-builds wire against.
+**Status:** IMPLEMENTED (L4 slice 1, 2026-07-10, SDK v0.1.0). Contracts and
+data models designed here; `lhm.nl` (`MetricIntent`, `Interpreter`,
+`resolve_intent`), `lhm.publish` (`PublishEnvelope`, `SyntropyTarget`,
+`HttpPublisher`, `InProcessPublisher`), and `lhm.ask` now ship in the SDK,
+contract-tested against the app's `/api/lhm/v1/metrics` route. This document
+remains the commitment surface the README and the docs site wire against.
 
 ---
 
