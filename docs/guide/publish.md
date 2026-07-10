@@ -271,7 +271,7 @@ asyncio.run(demo())
 ClaimScopeError (no byte left the process): an Rx-input metric is user-private — never a public/marketed surface (C1b)
 ```
 
-## Unpublish — and the pending app route
+## Unpublish
 
 `Publisher.unpublish(user_scope, metric_key)` removes a pinned metric.
 `HttpPublisher` sends `DELETE {base_url}/api/lhm/v1/metrics/{metric_key}`;
@@ -280,12 +280,12 @@ before it can touch a URL (hostile keys refuse with `ValueError` before any
 request exists), and a 404 answer counts as success (already gone —
 idempotent delete).
 
-**Pending route note:** the reference syntropy-journal backend currently
-implements only `POST /api/lhm/v1/metrics`; the DELETE route has not landed
-app-side yet. Against today's reference backend an `unpublish` therefore
-gets a 404 and returns as an idempotent no-op — nothing is actually
-removed. The SDK client is contract-complete; track the backend route
-before relying on remote unpublish.
+The reference syntropy-journal backend implements the route with matching
+semantics: the same `X-Syntropy-Key` gate as publish, the key shape
+re-validated server-side, a SOFT delete (the row flips to `removed`, the
+audit trail survives), 404 for an unknown key (your idempotent-success
+arm), and 503 for a transient store failure (safe to retry — removal is
+idempotent).
 
 ## One-call publication from `lhm.ask`
 
