@@ -24,6 +24,11 @@ Optional extra ``lhm[units]``:
 - ucumvert (https://github.com/dalito/ucumvert)
   License: MIT. Copyright (c) the ucumvert contributors.
 
+Optional extra ``lhm[publish]``:
+
+- httpx (https://github.com/encode/httpx)
+  License: BSD-3-Clause. Copyright (c) 2019, Encode OSS Ltd.
+
 All listed licenses are BSD/MIT-family — compatible with Apache-2.0
 redistribution; no copyleft in the dependency graph (A&D D2 license
 posture; re-verified at each release by the R7 packaging gate).

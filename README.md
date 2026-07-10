@@ -6,13 +6,13 @@ uncertainty-carrying personal metric → published to your dashboard.**
 ```python
 import lhm
 
-result = lhm.ask(
+result = await lhm.ask(
     "How does my magnesium intake relate to my sleep quality?",
     adapter=my_data,            # your data, your process — nothing leaves it
     interpreter=my_llm,         # bring your own LLM (or skip NL entirely)
 )
-result.suggestions              # tiered candidates: low / mid / strong
-result.publish(my_dashboard)   # → your syntropy-journal dashboard
+result.suggestions                    # tiered candidates: low / mid / strong
+await result.publish(my_dashboard)    # → your syntropy-journal dashboard
 ```
 
 That's the whole loop: **language → analysis → metric suggestions →
@@ -33,8 +33,12 @@ dashboard you own.
 ```bash
 pip install lhm                # core: clinical mapping + pipeline + contracts
 pip install "lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
-pip install "lhm[stats]"       # + numerical estimators (v2 — see roadmap)
-pip install "lhm[publish]"     # + the HTTP publisher (see roadmap)
+pip install "lhm[publish]"     # + the HTTP publisher (httpx transport)
+
+# pip install "lhm[stats]"     # v2 — not yet published; the numerical-
+#                              # estimator extra ships with the v2 estimators
+#                              # (see the roadmap below). Installing it today
+#                              # would fail: the extra does not exist yet.
 ```
 
 Core stays lean by design: `fhir.resources` (typed FHIR R4B, pydantic v2) and
@@ -90,7 +94,7 @@ The publish contract (`lhm-publish/v1`) is ONE versioned envelope —
 syntropy-journal backend:
 
 ```python
-from lhm.publish import SyntropyTarget          # (roadmap: L4 shapes)
+from lhm import SyntropyTarget
 
 # Self-hosted: your own syntropy-journal instance
 target = SyntropyTarget(base_url="https://journal.my-lab.dev")
@@ -98,16 +102,24 @@ target = SyntropyTarget(base_url="https://journal.my-lab.dev")
 # Cloud (commercial): the SAME contract — an API key is the only delta
 target = SyntropyTarget(
     base_url="https://app.syntropyhealth.bio",
-    api_key=os.environ["SYNTROPY_API_KEY"],
+    api_key=os.environ["SYNTROPY_API_KEY"],     # never persisted by the SDK
 )
 
-receipt = result.publish(target)
+receipt = await result.publish(target)
 receipt.dashboard_url                            # deep link to the rendered card
 ```
 
 Publishing is idempotent (at-least-once safe), claim-gated *before*
 transport, and Rx-tier metrics structurally refuse public surfaces. The SDK
-never stores your key.
+never stores your key (it is held as a `SecretStr` — masked in `repr` and
+every `model_dump`).
+
+Targets must be `https://` — the API key rides a header, and plain `http`
+would send it in cleartext. Plain `http` is accepted only for loopback dev
+hosts (`localhost` / `127.0.0.1` / `[::1]`); anything else needs an explicit
+`SyntropyTarget(..., allow_insecure=True)` opt-in. If you publish in-process
+instead of over HTTP, `InProcessPublisher(callback, public_surface=...)`
+requires the surface declaration — there is no default.
 
 ## Status & roadmap
 
@@ -116,8 +128,10 @@ never stores your key.
 | **L0** — contracts | `MetricSpec`, `lhm-viz/v1` schema, claim-scope guard | ✅ shipped |
 | **L1** — clinical mapping | orders/regimens/series → FHIR R4B; synthetic fixtures; PHI/secret gates | ✅ shipped |
 | **L2** — pipeline v0.1 | `fetch → analyze → manage`; six correction hooks (contract-tested stubs); tier surface | ✅ shipped |
-| **L3** — journals adoption | reference adapters, dashboard binding, the `/api/lhm/v1/metrics` route | 🔜 next |
-| **L4** — NL + publish shapes | `lhm.nl` (`MetricIntent`, `Interpreter`), `lhm.publish` (envelope, targets, publishers), docs site, `lhm.ask` | 📐 designed — [design 0001](docs/design/0001-nl-to-publish-pipeline.md) |
+| **L3** — journals adoption | reference adapters, dashboard binding, the `/api/lhm/v1/metrics` route | ✅ shipped |
+| **L4** — NL + publish | `lhm.nl` (`MetricIntent`, `Interpreter`, `resolve_intent`), `lhm.publish` (envelope, targets, publishers), `lhm.ask` | ✅ shipped — [design 0001](docs/design/0001-nl-to-publish-pipeline.md) |
+| **L4** — docs pillar | app-independent guide tree ([docs/](docs/README.md)), execution-verified examples | ✅ shipped |
+| **L4** — packaging | the D13 repo split + PyPI publish | 🔜 next |
 | **v2** — real estimators | `lhm[stats]`: AR(1)/detrend/ITS/posterior + FDR in the six hooks; ratified tier cutoffs | 📐 hooks in place |
 | **cloud** — hosted dashboard | API-key issuance, workspaces, the commercial surface | 🗺 vision |
 
@@ -131,6 +145,8 @@ testable today. The full design for the NL→publish pipeline — use cases,
 dependency tiers (numerical / clinical / models), the publish data models,
 and the API-key semantics — lives in
 [`docs/design/0001-nl-to-publish-pipeline.md`](docs/design/0001-nl-to-publish-pipeline.md).
+Full guides — quickstart, adapters, NL & `lhm.ask`, publishing, the honesty
+layer, and the error reference — live at [`docs/README.md`](docs/README.md).
 
 ## Design principles
 
