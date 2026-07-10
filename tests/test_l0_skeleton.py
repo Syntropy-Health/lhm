@@ -13,12 +13,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from lhm.contracts import viz as viz_mod
-from lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
-from lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
 from pydantic import ValidationError
 
 import lhm
+from lhm.contracts import viz as viz_mod
+from lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
+from lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
 
 _FIXTURES = Path(viz_mod.__file__).parent / "fixtures"
 
