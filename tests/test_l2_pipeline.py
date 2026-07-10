@@ -230,3 +230,90 @@ class TestManageR3R5R10:
         assert rt["form"] == "spline_v2"  # stores+reads at the JSONB layer
         with pytest.raises(Exception):
             MetricSpec.model_validate(rt)  # today's typed layer pins the literal
+
+
+class TestQgRoundAdditions:
+    """QG round 2026-07-10 — the review's HIGH + MEDIUM regressions pinned."""
+
+    async def test_no_orders_returns_empty_not_indexerror(self) -> None:
+        """HIGH: outcome series with zero orders is a normal early-adoption
+        state — fetch returns () instead of emitting un-analyzable data."""
+
+        class NoOrders(_Adapter):
+            async def read_orders(self, user_scope):
+                return []
+
+        aligned = await fetch(NoOrders(), "syn-subject-001")
+        assert aligned == ()
+        assert await analyze(aligned) == ()
+
+    async def test_naive_timestamp_from_adapter_fails_loud(self) -> None:
+        from lhm.models.mapping import MappingError
+
+        class NaiveSeries(_Adapter):
+            async def read_outcome_series(self, user_scope):
+                rec = _series([1.0, 2.0])
+                naive = SeriesRecord(
+                    subject_ref=rec.subject_ref,
+                    metric_display=rec.metric_display,
+                    unit=rec.unit,
+                    code=rec.code,
+                    points=(
+                        SeriesPoint(observed_at=datetime(2026, 1, 1), value=1.0),  # naive
+                    ),
+                )
+                return [naive]
+
+        with pytest.raises(MappingError, match="timezone-aware"):
+            await fetch(NaiveSeries(), "syn-subject-001")
+
+    async def test_slug_equal_series_get_distinct_metric_keys(self) -> None:
+        class TwoSeries(_Adapter):
+            async def read_outcome_series(self, user_scope):
+                return [
+                    _series([2.0] * 10 + [8.0] * 10, display="Sleep quality"),
+                    _series([2.0] * 10 + [8.0] * 10, display="Sleep-quality"),
+                ]
+
+        aligned = await fetch(TwoSeries(), "syn-subject-001")
+        signals = await analyze(aligned)
+        keys = [s.metric_key for s in signals]
+        assert len(set(keys)) == 2, f"metric_key collision: {keys}"
+
+    async def test_non_ascii_series_name_yields_valid_metric_key(self) -> None:
+        class Unicode(_Adapter):
+            async def read_outcome_series(self, user_scope):
+                return [_series([2.0] * 10 + [8.0] * 10, display="Énergie récupération")]
+
+        aligned = await fetch(Unicode(), "syn-subject-001")
+        sig = (await analyze(aligned))[0]
+        out = await manage("add", sig)  # must NOT ValidationError at manage
+        assert out.accepted
+        import re
+
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", sig.metric_key), sig.metric_key
+
+    async def test_forged_persistable_tier_on_low_fit_is_refused(self) -> None:
+        """LOW→enforced: manage re-derives the tier from fit_score — a
+        hand-built mid on a sub-threshold fit doesn't persist."""
+        sig = await TestManageR3R5R10()._candidate(values=[5.0] * 20)  # low fit
+        forged = sig.model_copy(update={"confidence": "mid"})
+        out = await manage("add", forged)
+        assert not out.accepted and "re-derives" in out.reason
+
+    async def test_checkin_sentiment_series_kind_mapped(self) -> None:
+        class Sentiment(_Adapter):
+            async def read_outcome_series(self, user_scope):
+                rec = _series([2.0] * 10 + [8.0] * 10)
+                return [
+                    SeriesRecord(
+                        subject_ref=rec.subject_ref,
+                        metric_display="Check-in sentiment",
+                        unit="",
+                        code="checkin-sentiment",
+                        points=rec.points,
+                    )
+                ]
+
+        aligned = await fetch(Sentiment(), "syn-subject-001")
+        assert aligned[0].outcome.kind == "checkin_sentiment"

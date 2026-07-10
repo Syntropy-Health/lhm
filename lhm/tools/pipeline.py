@@ -12,6 +12,7 @@ estimators are v2 (ADR-0002 ``FitBlock.method`` slot).
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Literal, Protocol, Sequence
 
@@ -24,6 +25,7 @@ from lhm.models.mapping import (
     OrderRecord,
     RegimenStartRecord,
     SeriesRecord,
+    _require_aware,
 )
 
 
@@ -114,6 +116,23 @@ async def fetch(adapter: LhmAdapter, user_scope: str) -> tuple[AlignedData, ...]
     starts = tuple(await adapter.read_regimen_starts(user_scope))
     series = tuple(await adapter.read_outcome_series(user_scope))
 
+    # QG HIGH fix: no orders → no inputs → nothing to correlate. Return
+    # empty rather than emitting AlignedData that can't form a MetricSpec
+    # (inputs has min_length=1) — a normal early-adoption state.
+    if not orders:
+        return ()
+
+    # QG fix: enforce tz-awareness HERE (fetch bypasses the map_* fns that
+    # normally guard it) — naive/aware mixing across adapter sources would
+    # otherwise TypeError deep in comparisons. Fail loud at the boundary.
+    for o in orders:
+        _require_aware(o.occurred_at, "OrderRecord.occurred_at")
+    for st in starts:
+        _require_aware(st.started_at, "RegimenStartRecord.started_at")
+    for rec in series:
+        for i, pt in enumerate(rec.points):
+            _require_aware(pt.observed_at, f"{rec.metric_display}.points[{i}].observed_at")
+
     rx_input = any(o.is_rx for o in orders)
     input_refs = tuple(
         InputRef(
@@ -141,7 +160,12 @@ async def fetch(adapter: LhmAdapter, user_scope: str) -> tuple[AlignedData, ...]
             for p in rec.points
             if p.value is not None
         )
-        kind = "wearable_series" if rec.code == "wearable-metric" else "journal_series"
+        if rec.code == "wearable-metric":
+            kind = "wearable_series"
+        elif rec.code == "checkin-sentiment":
+            kind = "checkin_sentiment"
+        else:
+            kind = "journal_series"
         out.append(
             AlignedData(
                 user_scope=user_scope,
@@ -165,6 +189,20 @@ _TIER_MID = 0.25
 _TIER_STRONG = 0.5
 
 
+def _tier_for(magnitude: float, rx_input: bool) -> Literal["low", "mid", "strong"]:
+    """Map a stub strength magnitude to its tier, with the C1b demotion."""
+    magnitude = abs(magnitude)
+    if magnitude >= _TIER_STRONG:
+        tier: Literal["low", "mid", "strong"] = "strong"
+    elif magnitude >= _TIER_MID:
+        tier = "mid"
+    else:
+        tier = "low"
+    if rx_input and tier == "strong":
+        tier = "mid"  # C1b: Rx never surfaces `strong` in v0.1
+    return tier
+
+
 def _stub_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int]:
     """Deterministic self-normalized strength: mean(outcome|active) minus
     mean(outcome|inactive), scaled into [-1, 1] by the outcome range.
@@ -172,6 +210,10 @@ def _stub_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int]:
     active = [p.outcome_value for p in pairs if p.input_active >= 0.5]
     inactive = [p.outcome_value for p in pairs if p.input_active < 0.5]
     if not active or not inactive:
+        # One empty group (regimen predates or postdates EVERY sample) →
+        # no contrast exists for the difference-of-means stub: strength 0,
+        # tier low, never persistable. Inherent to the v0.1 stub — the v2
+        # ITS correction (causal_direction hook) is where this improves.
         return 0.0, len(active)
     values = [p.outcome_value for p in pairs]
     spread = max(values) - min(values)
@@ -198,15 +240,7 @@ async def analyze(aligned: Sequence[AlignedData]) -> tuple[CandidateSignal, ...]
         corrections = run_corrections(raw_pairs)  # R4: once per analyze, all six
         strength, n_active = _stub_strength(data.pairs)
         magnitude = abs(strength)
-        if magnitude >= _TIER_STRONG:
-            tier: Literal["low", "mid", "strong"] = "strong"
-        elif magnitude >= _TIER_MID:
-            tier = "mid"
-        else:
-            tier = "low"
-        if data.rx_input and tier == "strong":
-            # C1b: an Rx input NEVER surfaces `strong` in v0.1 — demote.
-            tier = "mid"
+        tier = _tier_for(strength, data.rx_input)
         half_width = max(0.1, (1.0 - magnitude) / 2)  # provisional interval (stub)
         fit = FitBlock(
             posterior_mean=strength,
@@ -216,12 +250,20 @@ async def analyze(aligned: Sequence[AlignedData]) -> tuple[CandidateSignal, ...]
             method="stub",
             corrections=corrections,
         )
+        # ASCII-only slug (QG fix: MetricSpec.metric_key pins ^[a-z][a-z0-9_]*$
+        # — unicode letters pass isalnum() but fail the pattern at manage) +
+        # a stable short hash of (kind, series_key) so slug-equal outcome
+        # names ("Sleep quality" / "Sleep-quality") can't collide on persist.
+        raw_key = data.outcome.series_key.lower()
         series_slug = "".join(
-            ch if ch.isalnum() else "_" for ch in data.outcome.series_key.lower()
+            ch if ("a" <= ch <= "z" or "0" <= ch <= "9") else "_" for ch in raw_key
         ).strip("_")
+        digest = hashlib.sha256(
+            f"{data.outcome.kind}:{data.outcome.series_key}".encode()
+        ).hexdigest()[:6]
         out.append(
             CandidateSignal(
-                metric_key=f"sig_{series_slug or 'outcome'}",
+                metric_key=f"sig_{series_slug or 'outcome'}_{digest}",
                 label=f"{data.inputs[0].display} ↔ {data.outcome.series_key} (association)",
                 inputs=data.inputs,
                 outcome=data.outcome,
@@ -261,6 +303,20 @@ async def manage(
             action=action,
             accepted=False,
             reason="low-confidence candidates are ephemeral (C4 — only mid/strong persist)",
+        )
+
+    # QG fix: don't trust the caller-supplied tier verbatim — re-derive from
+    # the fit so a hand-built candidate can't forge a persistable tier onto
+    # a sub-threshold fit_score (the tier IS the honesty surface).
+    derived = _tier_for(candidate.fit.fit_score, candidate.rx_input)
+    if derived == "low":
+        return ManageOutcome(
+            action=action,
+            accepted=False,
+            reason=(
+                "tier/fit mismatch — the fit_score re-derives to 'low' "
+                "(candidates persist only on their own evidence)"
+            ),
         )
 
     # R10 — the persist-side claim gate (the L0-deferred source-pin lands here).
