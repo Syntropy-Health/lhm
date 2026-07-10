@@ -15,6 +15,7 @@ from fhir.resources.R4B.medicationrequest import MedicationRequest
 from fhir.resources.R4B.medicationstatement import MedicationStatement
 from fhir.resources.R4B.nutritionorder import NutritionOrder
 from fhir.resources.R4B.observation import Observation
+
 from lhm.fixtures import (
     SYNTHETIC_EPOCH,
     synthetic_order,
