@@ -55,3 +55,8 @@ lhm = ["contracts/*.json", "contracts/fixtures/**/*.json", "py.typed"]
 # addopts (--record-mode) that break standalone/clean-env runs.
 addopts = ""
 testpaths = ["tests"]
+# L2: the pipeline tools are async — auto mode matches the host app's pytest
+# config (pytest-asyncio ships in the app dev group; the R7 clean-env gate
+# exercises sync suites only).
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
