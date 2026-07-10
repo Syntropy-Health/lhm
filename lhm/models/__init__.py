@@ -11,4 +11,33 @@ lines in one payload is a contract error.
 #: The FHIR version every LHM-emitted resource uses (L0 decision, A&D D2).
 FHIR_VERSION = "R4B"
 
-__all__ = ["FHIR_VERSION"]
+from lhm.models.mapping import (  # noqa: E402 — re-export after the version pin
+    CURATED_CODES,
+    LHM_CODE_SYSTEM,
+    SENTIMENT_CODE,
+    UCUM_SYSTEM,
+    MappingError,
+    OrderRecord,
+    RegimenStartRecord,
+    SeriesPoint,
+    SeriesRecord,
+    map_order,
+    map_regimen_start,
+    map_series,
+)
+
+__all__ = [
+    "CURATED_CODES",
+    "FHIR_VERSION",
+    "LHM_CODE_SYSTEM",
+    "MappingError",
+    "OrderRecord",
+    "RegimenStartRecord",
+    "SENTIMENT_CODE",
+    "SeriesPoint",
+    "SeriesRecord",
+    "UCUM_SYSTEM",
+    "map_order",
+    "map_regimen_start",
+    "map_series",
+]

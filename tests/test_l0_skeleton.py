@@ -378,6 +378,15 @@ class TestAppIndependenceAllowlist:
             "    'lhm', 'pydantic', 'pydantic_core', 'annotated_types',\n"
             "    'typing_extensions', 'fhir', 'fhir_core', '_virtualenv',\n"
             "    'typing_inspection',\n"
+            # L1 note: fhir_core soft-imports PyYAML when present (a
+            # try/except optional feature; PyYAML is only fhir_core's
+            # test/dev extra, NOT an lhm runtime dep). In the shared app
+            # venv PyYAML exists, so 'yaml' (+ its C ext's
+            # 'cython_runtime') appears in sys.modules once the L1
+            # mapping layer imports fhir.resources. Allowed as fhir_core
+            # optional soft-deps — app frameworks stay banned via
+            # TestNoAppImports.
+            "    'yaml', 'cython_runtime',\n"
             "}\n"
             "loaded = {m.split('.')[0] for m in sys.modules if not m.startswith('_')}\n"
             "extra = loaded - allow\n"
