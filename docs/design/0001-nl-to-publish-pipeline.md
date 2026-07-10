@@ -14,13 +14,13 @@ remains the commitment surface the README and the docs site wire against.
 ```python
 import lhm
 
-result = lhm.ask(
+result = await lhm.ask(
     "How does my magnesium intake relate to my sleep quality?",
     adapter=my_adapter,          # your data (D7-style adapter — see §4)
     interpreter=my_interpreter,  # your LLM (BYO — see §3)
 )
 result.suggestions          # tiered candidate metrics (low / mid / strong)
-result.publish(target)      # → your syntropy-journal dashboard (see §5)
+await result.publish(target)  # → your syntropy-journal dashboard (see §5)
 ```
 
 One natural-language sentence in; a claim-safe, tiered, uncertainty-carrying
@@ -143,7 +143,8 @@ Two shipped-with-SDK implementations (PLANNED):
 
 - **`HttpPublisher`** — POSTs the envelope to
   `{base_url}/api/lhm/v1/metrics` (self-hosted journals; the L3 build adds
-  this route app-side). Auth: the journals session/service token — OR the
+  this route app-side). Auth (shipped surface): the `X-Syntropy-Key` header only — a
+  session/service-token path is a POSSIBLE post-L4/U3 addition, not built. The
   **API key** header (`X-Syntropy-Key`) when `api_key` is set, which is the
   ENTIRE difference between self-hosted and cloud (U3). Same envelope, same
   route shape, hosted base_url.

@@ -126,7 +126,8 @@ requires the surface declaration — there is no default.
 | **L2** — pipeline v0.1 | `fetch → analyze → manage`; six correction hooks (contract-tested stubs); tier surface | ✅ shipped |
 | **L3** — journals adoption | reference adapters, dashboard binding, the `/api/lhm/v1/metrics` route | ✅ shipped |
 | **L4** — NL + publish | `lhm.nl` (`MetricIntent`, `Interpreter`, `resolve_intent`), `lhm.publish` (envelope, targets, publishers), `lhm.ask` | ✅ shipped — [design 0001](docs/design/0001-nl-to-publish-pipeline.md) |
-| **L4** — docs pillar | MkDocs site, quickstart built on `lhm.ask`, repo split + PyPI publish | 🔜 next |
+| **L4** — docs pillar | app-independent guide tree ([docs/](docs/README.md)), execution-verified examples | ✅ shipped |
+| **L4** — packaging | the D13 repo split + PyPI publish | 🔜 next |
 | **v2** — real estimators | `lhm[stats]`: AR(1)/detrend/ITS/posterior + FDR in the six hooks; ratified tier cutoffs | 📐 hooks in place |
 | **cloud** — hosted dashboard | API-key issuance, workspaces, the commercial surface | 🗺 vision |
 
@@ -140,6 +141,8 @@ testable today. The full design for the NL→publish pipeline — use cases,
 dependency tiers (numerical / clinical / models), the publish data models,
 and the API-key semantics — lives in
 [`docs/design/0001-nl-to-publish-pipeline.md`](docs/design/0001-nl-to-publish-pipeline.md).
+Full guides — quickstart, adapters, NL & `lhm.ask`, publishing, the honesty
+layer, and the error reference — live at [`docs/README.md`](docs/README.md).
 
 ## Design principles
 
