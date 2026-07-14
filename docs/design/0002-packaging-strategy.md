@@ -19,7 +19,7 @@ reference consumer and L3 builds its adapters)?
 
 | Pattern | Living precedent | Observed failure record (this week) |
 |---|---|---|
-| **A. In-repo dir + path-source** (LHM today; also syntropy-diet, syntropy-sdk) | `lhm = { path = "LHM", editable = true }` | (1) PR #1446's conflict resolution **silently dropped the dep + source entry** → prod Unit gate red (`import lhm`), latent for a full land cycle. (2) The Dockerfile never `COPY`'d `LHM/` → **both prod+test image builds red** (`Distribution not found at file:///app/LHM`). (3) `uv.lock` conflicts on **every** cross-branch merge (the lock carries the path package). All three are now test-pinned — but each was a whole incident. |
+| **A. In-repo dir + path-source** (LHM today; also syntropy-diet, syntropy-sdk) | `syntropy-lhm = { path = "LHM", editable = true }` | (1) PR #1446's conflict resolution **silently dropped the dep + source entry** → prod Unit gate red (`import lhm`), latent for a full land cycle. (2) The Dockerfile never `COPY`'d `LHM/` → **both prod+test image builds red** (`Distribution not found at file:///app/LHM`). (3) `uv.lock` conflicts on **every** cross-branch merge (the lock carries the path package). All three are now test-pinned — but each was a whole incident. |
 | **B. Git submodule + path-source** (reflex-clerk-api, reflex-audio-capture, reflex-stripe) | `.gitmodules` → `libs/...` | The **worst** record: an unpopulated `libs/reflex-clerk-api` submodule **broke `uv lock` in bump-on-pr CI for every feature PR** (the #2454 regression — the lock step can't build a submodule that isn't checked out). Submodule-pointer bumps are a standing coordination tax (`apps/gtm/presentation` carries a "don't bump without coordinating" warning). CI/Docker contexts must remember `submodules: recursive` forever. |
 | **C. PyPI-published** (reflex-stripe, half-way) | `reflex-stripe>=0.1.1` on PyPI **but pinned back to a local path** because the 0.1.2 fix isn't published yet | Publish-lag friction: a local fix needed NOW forces a temporary path-source override until the release ships. Manageable (it's the documented exit path in pyproject), but real. |
 
@@ -32,7 +32,7 @@ chained to app release trains even when the change is inert to the app.
 - **A. Status quo forever** — fastest co-development; but the three A-class
   hazards recur structurally (every merge is a chance to re-drop the dep;
   every Docker change is a chance to lose the COPY), the lock stays a
-  conflict magnet, and `pip install lhm` (U1/U3, the OSS + commercial
+  conflict magnet, and `pip install syntropy-lhm` (U1/U3, the OSS + commercial
   promise) is impossible without a public artifact anyway.
 - **B. Own repo as a submodule** — decouples pushes, keeps one checkout;
   **rejected on direct evidence**: it inherits every A-class Docker/lock
@@ -62,17 +62,17 @@ chained to app release trains even when the change is inert to the app.
    the CTO may batch them. (The L2 hold was promote-freeze sequencing, not
    architecture.)
 3. **At L4 (the OSS pillar):** extract `LHM/` to `Syntropy-Health/lhm`
-   (history preserved via `git subtree split`), publish `lhm` 0.1.x to PyPI
+   (history preserved via `git subtree split`), publish `syntropy-lhm` 0.1.x to PyPI
    (the name is already reserved in our pyproject; R7's clean-env
    wheel-install gate has been rehearsing this since L1). syntropy-journal
-   then depends on **`lhm==x.y` from the index**: the path-source line, the
+   then depends on **`syntropy-lhm==x.y` from the index**: the path-source line, the
    Dockerfile `COPY LHM/`, and the lock's path entry are all **deleted** —
    the whole A-class hazard family goes away rather than being pinned.
 4. **Co-development after the split** uses the documented reflex-stripe
    pattern in reverse: a temporary `[tool.uv.sources]` local override while
    hacking both sides, removed at publish (that pyproject comment is the
    playbook).
-5. **Version discipline after the split:** the app pins exact (`lhm==x.y`);
+5. **Version discipline after the split:** the app pins exact (`syntropy-lhm==x.y`);
    the SDK releases semver with the contracts' additive-only rule
    (`lhm-viz/v1`, `lhm-publish/v1`) carrying compatibility; a
    contract-schema drift test app-side replaces in-repo lockstep.

@@ -28,8 +28,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lhm.metrics.claims import assert_claim_safe
-from lhm.metrics.spec import Confidence, MetricSpec  # noqa: TC001 - runtime use
+from syntropy.lhm.metrics.claims import assert_claim_safe
+from syntropy.lhm.metrics.spec import Confidence, MetricSpec  # noqa: TC001 - runtime use
 
 CONTRACT_ID = "lhm-viz/v1"
 SCHEMA_FILENAME = "lhm-viz.v1.schema.json"
@@ -102,7 +102,7 @@ def export_schema() -> str:
     Deterministic (sorted keys, 2-space indent, trailing newline) so the
     committed ``lhm-viz.v1.schema.json`` package-data file can be verified
     byte-for-byte in the contract test — regenerate the file with
-    ``python -m lhm.contracts.viz`` after any INTENTIONAL additive change.
+    ``python -m syntropy.lhm.contracts.viz`` after any INTENTIONAL additive change.
 
     PYDANTIC COUPLING (QGR L0 code-F7): the byte-match also pins the exact
     ``model_json_schema()`` output of the LOCKED pydantic version — a pydantic
@@ -122,7 +122,11 @@ def export_schema() -> str:
 
 def committed_schema() -> str:
     """The schema text shipped as package data (what consumers validate against)."""
-    return resources.files("lhm.contracts").joinpath(SCHEMA_FILENAME).read_text(encoding="utf-8")
+    return (
+        resources.files("syntropy.lhm.contracts")
+        .joinpath(SCHEMA_FILENAME)
+        .read_text(encoding="utf-8")
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - regeneration helper

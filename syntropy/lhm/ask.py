@@ -21,13 +21,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lhm.contracts.viz import VizPoint, to_viz_payload
-from lhm.nl.binder import ResolvedIntent, resolve_intent
-from lhm.nl.intent import Interpreter, MetricIntent
-from lhm.publish.envelope import PublishReceipt, build_envelope
-from lhm.publish.publisher import HttpPublisher, Publisher
-from lhm.publish.target import SyntropyTarget
-from lhm.tools.pipeline import AlignedData, CandidateSignal, LhmAdapter, analyze, fetch, manage
+from syntropy.lhm.contracts.viz import VizPoint, to_viz_payload
+from syntropy.lhm.nl.binder import ResolvedIntent, resolve_intent
+from syntropy.lhm.nl.intent import Interpreter, MetricIntent
+from syntropy.lhm.publish.envelope import PublishReceipt, build_envelope
+from syntropy.lhm.publish.publisher import HttpPublisher, Publisher
+from syntropy.lhm.publish.target import SyntropyTarget
+from syntropy.lhm.tools.pipeline import (
+    AlignedData,
+    CandidateSignal,
+    LhmAdapter,
+    analyze,
+    fetch,
+    manage,
+)
 
 #: Default opaque subject token for single-user/self-hosted use (U1) — an
 #: adapter serving one person needs no scoping; multi-user callers pass

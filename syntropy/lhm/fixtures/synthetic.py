@@ -18,7 +18,7 @@ from __future__ import annotations
 import random
 from datetime import datetime, timedelta, timezone
 
-from lhm.models.mapping import (
+from syntropy.lhm.models.mapping import (
     OrderRecord,
     RegimenStartRecord,
     SeriesPoint,

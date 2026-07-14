@@ -6,7 +6,7 @@ R7 packaging gate scans this package (source AND generated output) for
 PHI/secret patterns; keep it that way.
 """
 
-from lhm.fixtures.synthetic import (
+from syntropy.lhm.fixtures.synthetic import (
     SYNTHETIC_EPOCH,
     synthetic_order,
     synthetic_regimen_start,

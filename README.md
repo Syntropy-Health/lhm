@@ -4,7 +4,7 @@
 uncertainty-carrying personal metric → published to your dashboard.**
 
 ```python
-import lhm
+from syntropy import lhm
 
 result = await lhm.ask(
     "How does my magnesium intake relate to my sleep quality?",
@@ -24,18 +24,18 @@ dashboard you own.
 
 > **The honesty layer is structural, not prose.** Every metric is a personal
 > correlation/trend — never a causal, treatment, or clinical claim. The
-> claim-scope guard (`lhm.metrics.claims.assert_claim_safe`) gates every
+> claim-scope guard (`syntropy.lhm.metrics.claims.assert_claim_safe`) gates every
 > persist, publish, and render: banned clinical-efficacy vocabulary fails
 > loudly, and a metric cannot exist without its uncertainty caveats.
 
 ## Install
 
 ```bash
-pip install lhm                # core: clinical mapping + pipeline + contracts
-pip install "lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
-pip install "lhm[publish]"     # + the HTTP publisher (httpx transport)
+pip install syntropy-lhm                # core: clinical mapping + pipeline + contracts
+pip install "syntropy-lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
+pip install "syntropy-lhm[publish]"     # + the HTTP publisher (httpx transport)
 
-# pip install "lhm[stats]"     # v2 — not yet published; the numerical-
+# pip install "syntropy-lhm[stats]"     # v2 — not yet published; the numerical-
 #                              # estimator extra ships with the v2 estimators
 #                              # (see the roadmap below). Installing it today
 #                              # would fail: the extra does not exist yet.
@@ -66,7 +66,7 @@ your dashboard
 ```
 
 **The NL layer is sugar, never load-bearing.** Every stage consumes and
-returns typed models you can construct by hand — `lhm.ask()` is a
+returns typed models you can construct by hand — `syntropy.lhm.ask()` is a
 convenience composition, not a magic box. The LLM only narrows language to a
 `MetricIntent`; the SDK binds it to your actual data deterministically, so a
 hallucinated column can't silently become a metric.
@@ -94,7 +94,7 @@ The publish contract (`lhm-publish/v1`) is ONE versioned envelope —
 syntropy-journal backend:
 
 ```python
-from lhm import SyntropyTarget
+from syntropy.lhm import SyntropyTarget
 
 # Self-hosted: your own syntropy-journal instance
 target = SyntropyTarget(base_url="https://journal.my-lab.dev")
@@ -129,15 +129,15 @@ requires the surface declaration — there is no default.
 | **L1** — clinical mapping | orders/regimens/series → FHIR R4B; synthetic fixtures; PHI/secret gates | ✅ shipped |
 | **L2** — pipeline v0.1 | `fetch → analyze → manage`; six correction hooks (contract-tested stubs); tier surface | ✅ shipped |
 | **L3** — journals adoption | reference adapters, dashboard binding, the `/api/lhm/v1/metrics` route | ✅ shipped |
-| **L4** — NL + publish | `lhm.nl` (`MetricIntent`, `Interpreter`, `resolve_intent`), `lhm.publish` (envelope, targets, publishers), `lhm.ask` | ✅ shipped — [design 0001](docs/design/0001-nl-to-publish-pipeline.md) |
+| **L4** — NL + publish | `syntropy.lhm.nl` (`MetricIntent`, `Interpreter`, `resolve_intent`), `syntropy.lhm.publish` (envelope, targets, publishers), `syntropy.lhm.ask` | ✅ shipped — [design 0001](docs/design/0001-nl-to-publish-pipeline.md) |
 | **L4** — docs pillar | app-independent guide tree ([docs/](docs/README.md)), execution-verified examples | ✅ shipped |
 | **L4** — packaging | the D13 repo split + PyPI publish | 🔜 next |
-| **v2** — real estimators | `lhm[stats]`: AR(1)/detrend/ITS/posterior + FDR in the six hooks; ratified tier cutoffs | 📐 hooks in place |
+| **v2** — real estimators | `syntropy-lhm[stats]`: AR(1)/detrend/ITS/posterior + FDR in the six hooks; ratified tier cutoffs | 📐 hooks in place |
 | **cloud** — hosted dashboard | API-key issuance, workspaces, the commercial surface | 🗺 vision |
 
 **Packaging:** LHM lives in the syntropy-journal repo through L3 (maximum-
 coupling build phase), then splits to its own repo + PyPI at L4 so
-`pip install lhm` is real and the app consumes it like any dependency —
+`pip install syntropy-lhm` is real and the app consumes it like any dependency —
 decision record: [design 0002](docs/design/0002-packaging-strategy.md).
 
 v0.1 proves shapes and plumbing; the deterministic stubs make every contract
@@ -145,7 +145,7 @@ testable today. The full design for the NL→publish pipeline — use cases,
 dependency tiers (numerical / clinical / models), the publish data models,
 and the API-key semantics — lives in
 [`docs/design/0001-nl-to-publish-pipeline.md`](docs/design/0001-nl-to-publish-pipeline.md).
-Full guides — quickstart, adapters, NL & `lhm.ask`, publishing, the honesty
+Full guides — quickstart, adapters, NL & `syntropy.lhm.ask`, publishing, the honesty
 layer, and the error reference — live at [`docs/README.md`](docs/README.md).
 
 ## Design principles
@@ -167,7 +167,7 @@ layer, and the error reference — live at [`docs/README.md`](docs/README.md).
 ## Quickstart (v0.1 — the shapes that already run)
 
 ```python
-from lhm import InputRef, MetricSpec, OutcomeRef, to_viz_payload, VizPoint
+from syntropy.lhm import InputRef, MetricSpec, OutcomeRef, to_viz_payload, VizPoint
 
 spec = MetricSpec(
     metric_key="mag_sleep",
@@ -188,8 +188,8 @@ payload = to_viz_payload(spec, series=[VizPoint(ts=..., value=...)])  # render-g
 And the L2 pipeline end-to-end against synthetic data:
 
 ```python
-from lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
-from lhm.tools import analyze, fetch, manage
+from syntropy.lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
+from syntropy.lhm.tools import analyze, fetch, manage
 
 aligned = await fetch(my_adapter, "subject-001")
 signals = await analyze(aligned)                  # tiered, corrections-threaded

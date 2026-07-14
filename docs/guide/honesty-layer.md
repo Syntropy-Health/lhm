@@ -26,13 +26,13 @@ Concretely, that means:
 
 ## The claim-scope guard
 
-`lhm.metrics.claims.assert_claim_safe(label, caveats, confidence, rx_input,
+`syntropy.lhm.metrics.claims.assert_claim_safe(label, caveats, confidence, rx_input,
 public_surface=…)` gates every metric's user-facing text. Three checks, all
 structural:
 
 **1. The banned lexicon.** Clinical-efficacy vocabulary never appears in a
 metric's text — personal n-of-1 trends use structure-function association
-language only. The seven banned stems ship as `lhm.BANNED_LEXICON` (print it
+language only. The seven banned stems ship as `syntropy.lhm.BANNED_LEXICON` (print it
 to see them); matching is stem-based (`\b(word)\w*`) and runs after NFKC
 normalization + casefolding + zero-width-character stripping, so
 homoglyph-adjacent forms and zero-width insertions fold back to matchable
@@ -59,7 +59,7 @@ automatically (auto-rewriting a claim into compliance is exactly the kind of
 silent honesty-erosion the gate exists to stop).
 
 ```python
-from lhm import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
+from syntropy.lhm import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
 
 # compliant text passes silently
 assert_claim_safe(

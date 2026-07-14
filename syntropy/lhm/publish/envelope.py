@@ -26,8 +26,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from lhm.contracts.viz import VizPayload  # noqa: TC001 - runtime pydantic field type
-from lhm.metrics.spec import MetricSpec  # noqa: TC001 - runtime pydantic field type
+from syntropy.lhm.contracts.viz import VizPayload  # noqa: TC001 - runtime pydantic field type
+from syntropy.lhm.metrics.spec import MetricSpec  # noqa: TC001 - runtime pydantic field type
 
 ENVELOPE_VERSION = "lhm-publish/v1"
 

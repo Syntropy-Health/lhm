@@ -16,15 +16,15 @@ from fhir.resources.R4B.medicationstatement import MedicationStatement
 from fhir.resources.R4B.nutritionorder import NutritionOrder
 from fhir.resources.R4B.observation import Observation
 
-from lhm.fixtures import (
+from syntropy.lhm.fixtures import (
     SYNTHETIC_EPOCH,
     synthetic_order,
     synthetic_regimen_start,
     synthetic_series,
     synthetic_subject_ref,
 )
-from lhm.models import FHIR_VERSION
-from lhm.models.mapping import (
+from syntropy.lhm.models import FHIR_VERSION
+from syntropy.lhm.models.mapping import (
     LHM_CODE_SYSTEM,
     SENTIMENT_CODE,
     UCUM_SYSTEM,
@@ -164,7 +164,7 @@ class TestR4BExclusivity:
         mixing lines in one payload is a contract error."""
         from pathlib import Path
 
-        import lhm.models.mapping as mapping_mod
+        import syntropy.lhm.models.mapping as mapping_mod
 
         src = Path(mapping_mod.__file__).read_text()
         assert FHIR_VERSION == "R4B"

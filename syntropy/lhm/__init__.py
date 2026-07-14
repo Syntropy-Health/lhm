@@ -7,25 +7,25 @@ clinical claim (the claim-scope guard enforces this structurally).
 
 App-independent by construction (A&D D1): no web framework, no ORM, no LLM
 dep, no network in the core import path (HTTP transport is lazy under the
-``lhm[publish]`` extra). The consuming app adapts its data in and renders
+``syntropy-lhm[publish]`` extra). The consuming app adapts its data in and renders
 the pushed viz payloads.
 
 This module is the curated front door — consumers import from ``lhm``
 directly; the submodule layout is an implementation detail.
 """
 
-from lhm.ask import DEFAULT_USER_SCOPE, AskResult, ask
-from lhm.contracts.viz import VizPayload, VizPoint, export_schema, to_viz_payload
-from lhm.errors import LhmError
-from lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
-from lhm.metrics.spec import (
+from syntropy.lhm.ask import DEFAULT_USER_SCOPE, AskResult, ask
+from syntropy.lhm.contracts.viz import VizPayload, VizPoint, export_schema, to_viz_payload
+from syntropy.lhm.errors import LhmError
+from syntropy.lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
+from syntropy.lhm.metrics.spec import (
     CorrectionResult,
     FitBlock,
     InputRef,
     MetricSpec,
     OutcomeRef,
 )
-from lhm.models.mapping import (
+from syntropy.lhm.models.mapping import (
     MappingError,
     OrderRecord,
     RegimenStartRecord,
@@ -35,7 +35,7 @@ from lhm.models.mapping import (
     map_regimen_start,
     map_series,
 )
-from lhm.nl import (
+from syntropy.lhm.nl import (
     AmbiguousIntentError,
     Interpreter,
     MetricIntent,
@@ -43,7 +43,7 @@ from lhm.nl import (
     UnresolvableIntentError,
     resolve_intent,
 )
-from lhm.publish import (
+from syntropy.lhm.publish import (
     HttpPublisher,
     InProcessPublisher,
     PublishEnvelope,
@@ -54,7 +54,7 @@ from lhm.publish import (
     build_envelope,
     compute_idempotency_key,
 )
-from lhm.tools.pipeline import (
+from syntropy.lhm.tools.pipeline import (
     AlignedData,
     AlignedPair,
     CandidateSignal,

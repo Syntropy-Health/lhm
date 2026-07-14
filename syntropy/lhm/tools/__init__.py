@@ -5,7 +5,7 @@ NO Reflex, NO DB, NO auth. The consuming app registers them in its own tool
 registry with its auth/τ/InjectedState conventions and owns every persist.
 """
 
-from lhm.tools.pipeline import (
+from syntropy.lhm.tools.pipeline import (
     AlignedData,
     AlignedPair,
     CandidateSignal,

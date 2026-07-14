@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Callable, Mapping, Sequence
 
-from lhm.metrics.spec import CorrectionResult
+from syntropy.lhm.metrics.spec import CorrectionResult
 
 #: A correction hook: consumes the aligned (input, outcome) sample pairs and
 #: returns its typed contribution. v0.1 stubs ignore the numerics and return

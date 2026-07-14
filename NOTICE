@@ -16,7 +16,7 @@ This product depends on the following third-party packages (runtime):
 - pydantic (https://github.com/pydantic/pydantic)
   License: MIT. Copyright (c) Pydantic Services Inc. and contributors.
 
-Optional extra ``lhm[units]``:
+Optional extra ``syntropy-lhm[units]``:
 
 - pint (https://github.com/hgrecco/pint)
   License: BSD-3-Clause. Copyright (c) Hernan E. Grecco and contributors.
@@ -24,7 +24,7 @@ Optional extra ``lhm[units]``:
 - ucumvert (https://github.com/dalito/ucumvert)
   License: MIT. Copyright (c) the ucumvert contributors.
 
-Optional extra ``lhm[publish]``:
+Optional extra ``syntropy-lhm[publish]``:
 
 - httpx (https://github.com/encode/httpx)
   License: BSD-3-Clause. Copyright (c) 2019, Encode OSS Ltd.

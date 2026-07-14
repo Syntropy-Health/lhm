@@ -84,7 +84,11 @@ class TestPhiSecretScan:
         pass vacuously. The set must include the mapping + fixtures modules."""
         rel = {str(f.relative_to(LHM_ROOT)) for f in _scannable_lhm_files()}
         assert len(rel) >= 10, f"suspiciously small scan set: {sorted(rel)}"
-        for must in ("lhm/models/mapping.py", "lhm/fixtures/synthetic.py", "NOTICE"):
+        for must in (
+            "syntropy/lhm/models/mapping.py",
+            "syntropy/lhm/fixtures/synthetic.py",
+            "NOTICE",
+        ):
             assert must in rel, f"scan set missing {must}"
 
     def test_source_tree_carries_no_phi_or_secrets(self) -> None:
@@ -100,8 +104,8 @@ class TestPhiSecretScan:
         assert not offenders, "PHI/secret patterns in the package tree:\n" + "\n".join(offenders)
 
     def test_synthetic_output_carries_no_phi_or_secrets(self) -> None:
-        from lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
-        from lhm.models.mapping import map_order, map_regimen_start, map_series
+        from syntropy.lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
+        from syntropy.lhm.models.mapping import map_order, map_regimen_start, map_series
 
         resources = []
         for seed in range(5):
@@ -118,7 +122,7 @@ class TestPhiSecretScan:
         """The raw fixture RECORDS too — note text is (by design, C9) never
         serialized, so the output scan above is structurally blind to a PHI
         string planted in a check-in note. Scan the inputs directly."""
-        from lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
+        from syntropy.lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
 
         blob = "\n".join(
             repr(x)
@@ -222,7 +226,7 @@ class TestLicenseNoticeGate:
 )
 class TestCleanEnvInstall:
     def test_wheel_installs_and_synthesizes_in_clean_env(self, tmp_path: Path) -> None:
-        """R7 integration proof: build → fresh venv → import lhm (no source
+        """R7 integration proof: build → fresh venv → import syntropy.lhm (no source
         tree on path) → fixtures → mapping → serialize."""
         # The fresh venv FIRST — the host interpreter may be a uv venv with
         # no pip; stdlib venv bootstraps pip via ensurepip, and that pip
@@ -249,8 +253,8 @@ class TestCleanEnvInstall:
             capture_output=True,
             timeout=300,  # network: fetches the setuptools build backend
         )
-        wheels = list(dist.glob("lhm-*.whl"))
-        assert wheels, f"no lhm wheel built under {dist} (dist-name drift?)"
+        wheels = list(dist.glob("syntropy_lhm-*.whl"))
+        assert wheels, f"no syntropy_lhm wheel built under {dist} (dist-name drift?)"
         wheel = wheels[0]
         subprocess.run(
             [str(vpy), "-m", "pip", "install", "--quiet", str(wheel)],
@@ -260,8 +264,8 @@ class TestCleanEnvInstall:
         )
         probe = (
             "import json;"
-            "from lhm.fixtures import synthetic_series;"
-            "from lhm.models.mapping import map_series;"
+            "from syntropy.lhm.fixtures import synthetic_series;"
+            "from syntropy.lhm.models.mapping import map_series;"
             "obs = map_series(synthetic_series(1), sentiment_fn=lambda s: 0.5);"
             "print(json.dumps(obs[0].model_dump(exclude_none=True), default=str)[:60])"
         )

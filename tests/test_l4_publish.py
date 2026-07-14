@@ -15,8 +15,8 @@ Pins:
   never called.
 - At-least-once retry with capped backoff — injected sleeper, mocked
   transport, no network, no real sleeps.
-- Transport is extra-gated: ``lhm.publish`` imports without httpx; the
-  missing-dep error names ``pip install "lhm[publish]"``.
+- Transport is extra-gated: ``syntropy.lhm.publish`` imports without httpx; the
+  missing-dep error names ``pip install "syntropy-lhm[publish]"``.
 """
 
 from __future__ import annotations
@@ -31,10 +31,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from lhm.contracts.viz import VizPayload, VizPoint
-from lhm.metrics.claims import ClaimScopeError
-from lhm.metrics.spec import InputRef, MetricSpec, OutcomeRef
-from lhm.publish import (
+from syntropy.lhm.contracts.viz import VizPayload, VizPoint
+from syntropy.lhm.metrics.claims import ClaimScopeError
+from syntropy.lhm.metrics.spec import InputRef, MetricSpec, OutcomeRef
+from syntropy.lhm.publish import (
     HttpPublisher,
     InProcessPublisher,
     PublishEnvelope,
@@ -156,7 +156,9 @@ def test_target_never_reprs_the_api_key():
 
 def test_publish_module_import_does_not_import_httpx():
     """Core import path stays transport-free (D12) — checked in a clean process."""
-    code = "import sys; import lhm.publish; assert 'httpx' not in sys.modules, 'httpx leaked'"
+    code = (
+        "import sys; import syntropy.lhm.publish; assert 'httpx' not in sys.modules, 'httpx leaked'"
+    )
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
@@ -165,7 +167,7 @@ def test_publish_module_import_does_not_import_httpx():
 
 def test_missing_httpx_error_names_the_publish_extra(monkeypatch):
     monkeypatch.setitem(sys.modules, "httpx", None)
-    with pytest.raises(ImportError, match=r'pip install "lhm\[publish\]"'):
+    with pytest.raises(ImportError, match=r'pip install "syntropy-lhm\[publish\]"'):
         HttpPublisher(_target())
 
 
@@ -673,7 +675,7 @@ async def test_big_declared_content_length_refused_before_any_read():
     (however small it actually is) is never even iterated."""
     httpx = pytest.importorskip("httpx")
 
-    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+    from syntropy.lhm.publish.publisher import MAX_RESPONSE_BYTES
 
     body = _recording_stream((b"tiny",))
     transport, calls = _mock_transport(
@@ -697,7 +699,7 @@ async def test_oversized_actual_body_without_content_length_refused_at_read():
     read time (over-cap mid-stream), never after full buffering."""
     httpx = pytest.importorskip("httpx")
 
-    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+    from syntropy.lhm.publish.publisher import MAX_RESPONSE_BYTES
 
     half = MAX_RESPONSE_BYTES // 2 + 1024
     body = _recording_stream((b"x" * half, b"x" * half, b"x" * half))
@@ -715,7 +717,7 @@ async def test_cap_applies_to_5xx_retry_bodies_too():
     of being buffered as retry fodder."""
     httpx = pytest.importorskip("httpx")
 
-    from lhm.publish.publisher import MAX_RESPONSE_BYTES
+    from syntropy.lhm.publish.publisher import MAX_RESPONSE_BYTES
 
     half = MAX_RESPONSE_BYTES // 2 + 1024
     body = _recording_stream((b"x" * half, b"x" * half, b"x" * half))

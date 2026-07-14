@@ -20,7 +20,7 @@ _UF_HIDDEN = 0x8000  # macOS chflags hidden
 
 def _hidden_lhm_pth_present() -> bool:
     for sp in site.getsitepackages() + [site.getusersitepackages()]:
-        for pth in Path(sp).glob("__editable__.lhm-*.pth"):
+        for pth in Path(sp).glob("__editable__.syntropy_lhm-*.pth"):
             try:
                 if os.stat(pth).st_flags & _UF_HIDDEN:  # type: ignore[attr-defined]
                     return True
@@ -60,7 +60,7 @@ _WAS_HIDDEN = _hidden_lhm_pth_present()
 _clear_hidden_editable_flags()
 
 try:  # the editable install (normal path)
-    import lhm  # noqa: F401
+    from syntropy import lhm  # noqa: F401
 except ModuleNotFoundError:
     if _WAS_HIDDEN:
         # The known APFS flag quirk — rescue loudly.
