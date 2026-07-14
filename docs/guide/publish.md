@@ -6,7 +6,7 @@ both personas — **the API key is the only delta** between self-hosted and
 cloud. Transport ships as the opt-in extra:
 
 ```bash
-pip install "lhm[publish]"   # httpx transport for HttpPublisher
+pip install "syntropy-lhm[publish]"   # httpx transport for HttpPublisher
 ```
 
 The envelope/receipt/target models work without the extra; only
@@ -16,7 +16,7 @@ The envelope/receipt/target models work without the extra; only
 ## `SyntropyTarget` — where, and with what credential
 
 ```python
-from lhm import SyntropyTarget
+from syntropy.lhm import SyntropyTarget
 
 self_hosted = SyntropyTarget(base_url="https://journal.my-lab.dev")
 cloud = SyntropyTarget(
@@ -96,7 +96,7 @@ idempotency key for you:
 
 ```python
 from datetime import datetime, timezone
-from lhm import InputRef, MetricSpec, OutcomeRef, VizPoint, build_envelope, to_viz_payload
+from syntropy.lhm import InputRef, MetricSpec, OutcomeRef, VizPoint, build_envelope, to_viz_payload
 
 SPEC = MetricSpec(
     metric_key="mag_sleep",
@@ -159,7 +159,7 @@ policy is testable with no network and no real sleeps:
 ```python
 import asyncio
 import httpx
-from lhm import HttpPublisher, PublishTransportError
+from syntropy.lhm import HttpPublisher, PublishTransportError
 
 calls = {"n": 0}
 
@@ -218,7 +218,7 @@ gate must never default open; the caller states the surface explicitly.
 
 ```python
 import asyncio
-from lhm import InProcessPublisher
+from syntropy.lhm import InProcessPublisher
 
 async def store(env) -> dict:
     # your persistence here — e.g. write env.spec.model_dump() to your DB
@@ -245,8 +245,8 @@ raises `NotImplementedError`.
 ```python
 import asyncio
 import httpx
-from lhm import HttpPublisher, InputRef, SyntropyTarget, build_envelope, to_viz_payload
-from lhm.metrics.claims import ClaimScopeError
+from syntropy.lhm import HttpPublisher, InputRef, SyntropyTarget, build_envelope, to_viz_payload
+from syntropy.lhm.metrics.claims import ClaimScopeError
 
 RX_SPEC = SPEC.model_copy(update={
     "rx_input": True,
@@ -287,7 +287,7 @@ audit trail survives), 404 for an unknown key (your idempotent-success
 arm), and 503 for a transient store failure (safe to retry — removal is
 idempotent).
 
-## One-call publication from `lhm.ask`
+## One-call publication from `syntropy.lhm.ask`
 
 `AskResult.publish(target)` composes everything on this page: it walks the
 tier-sorted suggestions, runs `manage` (persist gate), builds the

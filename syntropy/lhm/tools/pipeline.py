@@ -18,10 +18,10 @@ from typing import Literal, Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lhm.metrics.claims import assert_claim_safe
-from lhm.metrics.corrections import run_corrections
-from lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
-from lhm.models.mapping import (
+from syntropy.lhm.metrics.claims import assert_claim_safe
+from syntropy.lhm.metrics.corrections import run_corrections
+from syntropy.lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
+from syntropy.lhm.models.mapping import (
     OrderRecord,
     RegimenStartRecord,
     SeriesRecord,

@@ -1,4 +1,4 @@
-# Natural language & `lhm.ask` — sugar, never load-bearing
+# Natural language & `syntropy.lhm.ask` — sugar, never load-bearing
 
 The NL layer's design rule (D10): **the LLM narrows language; the SDK binds
 data.** Every NL capability has a hand-constructible typed equivalent, the
@@ -12,7 +12,7 @@ prompt ──Interpreter (your LLM)──▶ MetricIntent ──resolve_intent (
 ## `MetricIntent` — the structured reading of the question
 
 ```python
-from lhm import MetricIntent
+from syntropy.lhm import MetricIntent
 
 intent = MetricIntent(
     input_query="magnesium glycinate",   # what the user consumes
@@ -91,9 +91,9 @@ Both refusals keep diagnostics off the message: the available/matched
 displays ride the exception's `candidates` / `matched_displays` attributes
 for in-process use only — don't log them alongside user identifiers (C9).
 
-## End to end: `lhm.ask` with a stub interpreter
+## End to end: `syntropy.lhm.ask` with a stub interpreter
 
-`lhm.ask` is a convenience composition of the public stages — interpret →
+`syntropy.lhm.ask` is a convenience composition of the public stages — interpret →
 bind → `fetch` → `analyze` — plus one-call publication. Here with an
 in-memory adapter and a zero-LLM interpreter stub:
 
@@ -102,8 +102,8 @@ import asyncio
 import re
 from datetime import datetime, timezone
 
-import lhm
-from lhm import (
+from syntropy import lhm
+from syntropy.lhm import (
     AmbiguousIntentError,
     MetricIntent,
     OrderRecord,

@@ -1,5 +1,5 @@
 [project]
-name = "lhm"
+name = "syntropy-lhm"
 version = "0.1.0"
 description = "LHM — Longevity Health Metrics SDK: chat-programmable, clinically-modelled n-of-1 personal metrics (correlation-not-causation by construction)."
 readme = "README.md"
@@ -28,9 +28,9 @@ dependencies = [
 [project.urls]
 # Pre-split home (design 0002: LHM lives inside the journals repo through
 # L4); the D13 repo split updates these to the standalone repo.
-Homepage = "https://github.com/Syntropy-Health/SyntropyJournal"
-Repository = "https://github.com/Syntropy-Health/SyntropyJournal"
-Documentation = "https://github.com/Syntropy-Health/SyntropyJournal/tree/main/LHM/docs"
+Homepage = "https://github.com/Syntropy-Health/lhm"
+Repository = "https://github.com/Syntropy-Health/lhm"
+Documentation = "https://github.com/Syntropy-Health/lhm/tree/main/docs"
 
 [project.optional-dependencies]
 # UCUM units for Observation quantities (A&D D2) — optional extra. NOTE
@@ -56,12 +56,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["lhm*"]
+include = ["syntropy*"]
+namespaces = true
 
 [tool.setuptools.package-data]
 # The committed viz contract ships INSIDE the wheel (A&D D5/F11) so installed
 # consumers can validate against the exact schema.
-lhm = ["contracts/*.json", "contracts/fixtures/**/*.json", "py.typed"]
+"syntropy.lhm" = ["contracts/*.json", "contracts/fixtures/**/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 # Self-rooted pytest config (QGR L0 code-F8): without this, running the suite

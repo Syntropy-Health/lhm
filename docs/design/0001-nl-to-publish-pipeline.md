@@ -1,9 +1,9 @@
 # LHM Design 0001 — The NL-to-Publish Pipeline
 
 **Status:** IMPLEMENTED (L4 slice 1, 2026-07-10, SDK v0.1.0). Contracts and
-data models designed here; `lhm.nl` (`MetricIntent`, `Interpreter`,
-`resolve_intent`), `lhm.publish` (`PublishEnvelope`, `SyntropyTarget`,
-`HttpPublisher`, `InProcessPublisher`), and `lhm.ask` now ship in the SDK,
+data models designed here; `syntropy.lhm.nl` (`MetricIntent`, `Interpreter`,
+`resolve_intent`), `syntropy.lhm.publish` (`PublishEnvelope`, `SyntropyTarget`,
+`HttpPublisher`, `InProcessPublisher`), and `syntropy.lhm.ask` now ship in the SDK,
 contract-tested against the app's `/api/lhm/v1/metrics` route. This document
 remains the commitment surface the README and the guide tree wire against.
 
@@ -12,7 +12,7 @@ remains the commitment surface the README and the guide tree wire against.
 ## 1. The one-liner
 
 ```python
-import lhm
+from syntropy import lhm
 
 result = await lhm.ask(
     "How does my magnesium intake relate to my sleep quality?",
@@ -55,7 +55,7 @@ the **Interpreter** (language → metric intent) and the **Publisher**
 
 | # | Persona | Entry | Data | Render surface |
 |---|---|---|---|---|
-| U1 | **Self-hoster / developer** | `pip install lhm`, `lhm.ask(...)` in a script or notebook | Their own adapter (CSV, SQLite, wearable export) | Their self-hosted syntropy-journal dashboard (or raw `VizPayload` into anything) |
+| U1 | **Self-hoster / developer** | `pip install syntropy-lhm`, `syntropy.lhm.ask(...)` in a script or notebook | Their own adapter (CSV, SQLite, wearable export) | Their self-hosted syntropy-journal dashboard (or raw `VizPayload` into anything) |
 | U2 | **Shrine app user** | Chat ("track this for me") — the app's agent IS the interpreter | The journals adapters (orders, journal series, check-ins) | The shrine health-metrics tabs (L3 binding) |
 | U3 | **Cloud customer (commercial)** | Same SDK; `SyntropyTarget(api_key=...)` | Their adapter or Syntropy-ingested data | The **cloud-hosted** Syntropy dashboard, authenticated by API key |
 
@@ -71,7 +71,7 @@ entirely and construct `MetricIntent` by hand — the NL layer is sugar, never
 load-bearing).
 
 ```python
-class MetricIntent(BaseModel):            # lhm.nl (SHIPPED, L4)
+class MetricIntent(BaseModel):            # syntropy.lhm.nl (SHIPPED, L4)
     """The structured reading of the user's question — LLM-OUTPUT-SHAPED,
     but constructible by hand (the NL layer is optional sugar)."""
     input_query:   str          # what the user consumes ("magnesium")
@@ -79,7 +79,7 @@ class MetricIntent(BaseModel):            # lhm.nl (SHIPPED, L4)
     window_days:   int = 90     # analysis window
     raw_prompt:    str = ""     # provenance (never leaves the process — C9)
 
-class Interpreter(Protocol):              # lhm.nl (SHIPPED, L4)
+class Interpreter(Protocol):              # syntropy.lhm.nl (SHIPPED, L4)
     async def interpret(self, prompt: str) -> MetricIntent: ...
 ```
 
@@ -101,7 +101,7 @@ alignment, corrections, tiering, the claim gate — is SDK-owned.
 ### 5.1 The envelope (the data model that crosses the wire)
 
 ```python
-class PublishEnvelope(BaseModel):         # lhm.publish (SHIPPED, L4)
+class PublishEnvelope(BaseModel):         # syntropy.lhm.publish (SHIPPED, L4)
     """Everything a syntropy-journal backend needs to surface one metric.
 
     Versioned like the viz contract: additive-only within v1."""
@@ -120,7 +120,7 @@ is at-least-once safe by construction.
 ### 5.2 The target + transport
 
 ```python
-class SyntropyTarget(BaseModel):          # lhm.publish (SHIPPED)
+class SyntropyTarget(BaseModel):          # syntropy.lhm.publish (SHIPPED)
     base_url: str                         # https required; plain http only for
                                           # loopback OR explicit allow_insecure=True
     api_key:  SecretStr | None = None     # cloud credential — masked in repr/dumps
@@ -166,11 +166,11 @@ An Rx-input metric refuses `public_surface=True` targets structurally.
 | Tier | Packages | License | Phase | Why |
 |---|---|---|---|---|
 | **Clinical (core)** | `fhir.resources==8.3.x` (+`fhir-core`, pydantic) | BSD/MIT | SHIPPED (L0) | typed FHIR R4B mapping |
-| **Units (extra `lhm[units]`)** | `pint`, `ucumvert` | BSD/MIT | SHIPPED (L0) | UCUM quantity validation |
-| **Numerical (extra `lhm[stats]`)** | `numpy`, `scipy`, `statsmodels` | BSD | v2 (estimators) | AR(1)/detrend/ITS/posterior — the six C2 hook bodies |
+| **Units (extra `syntropy-lhm[units]`)** | `pint`, `ucumvert` | BSD/MIT | SHIPPED (L0) | UCUM quantity validation |
+| **Numerical (extra `syntropy-lhm[stats]`)** | `numpy`, `scipy`, `statsmodels` | BSD | v2 (estimators) | AR(1)/detrend/ITS/posterior — the six C2 hook bodies |
 | **Honest inference** | (within `statsmodels`; evaluate `arviz` only if a full Bayesian posterior is ratified) | BSD/Apache | v2 | interval + FDR across the metric family |
-| **Models / NL** | **NONE in the SDK.** `Interpreter` is BYO-LLM; an optional `lhm[nl-openai]` convenience shim is a POST-v1 decision, never core | — | L4 design gate | app-independence (D1) + no key handling in the OSS package |
-| **Transport** | `httpx` (already transitively present app-side; SDK gets it via extra `lhm[publish]`) | BSD | L3/L4 | `HttpPublisher` |
+| **Models / NL** | **NONE in the SDK.** `Interpreter` is BYO-LLM; an optional `syntropy-lhm[nl-openai]` convenience shim is a POST-v1 decision, never core | — | L4 design gate | app-independence (D1) + no key handling in the OSS package |
+| **Transport** | `httpx` (already transitively present app-side; SDK gets it via extra `syntropy-lhm[publish]`) | BSD | L3/L4 | `HttpPublisher` |
 
 Rule carried from D2: BSD/MIT-family only, exact-pin the single-maintainer
 clinical deps, no copyleft — re-verified by the R7 NOTICE gate each release.
@@ -192,8 +192,8 @@ clinical deps, no copyleft — re-verified by the R7 NOTICE gate each release.
 | Phase | Ships |
 |---|---|
 | L3 (SHIPPED) | journals adapters + `CustomMetric` store + MCP wrappers + dashboard binding + the app-side `/api/lhm/v1/metrics` route |
-| L4 (SHIPPED) | `lhm.nl` with the WORKING deterministic binder (`MetricIntent`, `Interpreter`, `resolve_intent`) + `lhm.publish` with the real httpx `HttpPublisher` (retry/backoff, size-capped reads) and `InProcessPublisher`; `lhm.ask`; the plain-Markdown guide tree under `docs/` (no MkDocs site, no stub transports) |
-| v2 | real estimators (`lhm[stats]`), tier cutoffs ratified, `lhm.ask` end-to-end against a live journals backend |
+| L4 (SHIPPED) | `syntropy.lhm.nl` with the WORKING deterministic binder (`MetricIntent`, `Interpreter`, `resolve_intent`) + `syntropy.lhm.publish` with the real httpx `HttpPublisher` (retry/backoff, size-capped reads) and `InProcessPublisher`; `syntropy.lhm.ask`; the plain-Markdown guide tree under `docs/` (no MkDocs site, no stub transports) |
+| v2 | real estimators (`syntropy-lhm[stats]`), tier cutoffs ratified, `syntropy.lhm.ask` end-to-end against a live journals backend |
 | commercial | hosted dashboard + API-key issuance (same contract; ops/product scope) |
 
 ## 9. Decisions of record

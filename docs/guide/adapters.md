@@ -8,7 +8,7 @@ that can fill them:
 ```python
 from typing import Protocol, Sequence
 
-from lhm import OrderRecord, RegimenStartRecord, SeriesRecord
+from syntropy.lhm import OrderRecord, RegimenStartRecord, SeriesRecord
 
 class LhmAdapter(Protocol):
     async def read_orders(self, user_scope: str) -> Sequence[OrderRecord]: ...
@@ -22,7 +22,7 @@ database, your models, or your users.
 
 ## The three record shapes
 
-All three are frozen dataclasses importable from `lhm`:
+All three are frozen dataclasses importable from `syntropy.lhm`:
 
 **`OrderRecord`** — one purchase/order event (the metric's *input* side):
 
@@ -64,7 +64,7 @@ naive/aware math deep in the pipeline:
 ```python
 import asyncio
 from datetime import datetime
-from lhm import MappingError, OrderRecord, fetch
+from syntropy.lhm import MappingError, OrderRecord, fetch
 
 naive = OrderRecord(
     subject_ref="demo-subject-001",
@@ -95,7 +95,7 @@ backend route:
 
 ```python
 from datetime import datetime, timezone
-from lhm import MappingError, OrderRecord, map_order
+from syntropy.lhm import MappingError, OrderRecord, map_order
 
 try:
     map_order(OrderRecord(
@@ -116,7 +116,7 @@ check is your adapter's contract. Free-text check-in notes never enter the
 SDK's outputs either: `map_series` consumes a `note` only through an
 adapter-injected `sentiment_fn` and emits the resulting float; the text
 stays on your side of the boundary. A single-user/self-hosted adapter can
-ignore `user_scope` entirely (`lhm.DEFAULT_USER_SCOPE` is
+ignore `user_scope` entirely (`syntropy.lhm.DEFAULT_USER_SCOPE` is
 `"local-subject"`).
 
 **The Rx-tier bit is the adapter's job — never an LLM's (D9).** Set
@@ -169,7 +169,7 @@ import csv
 import pathlib
 from datetime import datetime
 
-from lhm import OrderRecord, RegimenStartRecord, SeriesPoint, SeriesRecord, analyze, fetch
+from syntropy.lhm import OrderRecord, RegimenStartRecord, SeriesPoint, SeriesRecord, analyze, fetch
 
 
 class CsvAdapter:

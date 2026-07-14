@@ -11,7 +11,7 @@ lines in one payload is a contract error.
 #: The FHIR version every LHM-emitted resource uses (L0 decision, A&D D2).
 FHIR_VERSION = "R4B"
 
-from lhm.models.mapping import (  # noqa: E402 — re-export after the version pin
+from syntropy.lhm.models.mapping import (  # noqa: E402 — re-export after the version pin
     CURATED_CODES,
     LHM_CODE_SYSTEM,
     SENTIMENT_CODE,

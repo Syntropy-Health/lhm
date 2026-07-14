@@ -5,7 +5,7 @@ Two shipped implementations of the :class:`Publisher` Protocol:
 - :class:`HttpPublisher` — POSTs the envelope to
   ``{base_url}/api/lhm/v1/metrics`` (self-hosted journals or the hosted
   cloud; the API key header is the only delta — D11). Transport is httpx,
-  imported LAZILY under the ``lhm[publish]`` extra: the envelope/receipt
+  imported LAZILY under the ``syntropy-lhm[publish]`` extra: the envelope/receipt
   models never need it.
 - :class:`InProcessPublisher` — the U2 path: no HTTP; hands the envelope to
   an injected app callback (e.g. the journals MCP ``manage_metrics``
@@ -30,15 +30,15 @@ import re
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 from urllib.parse import quote
 
-from lhm.errors import LhmError
-from lhm.metrics.claims import assert_claim_safe
-from lhm.metrics.spec import METRIC_KEY_MAX_LENGTH, METRIC_KEY_PATTERN
-from lhm.publish.envelope import PublishEnvelope, PublishReceipt
-from lhm.publish.target import SyntropyTarget
+from syntropy.lhm.errors import LhmError
+from syntropy.lhm.metrics.claims import assert_claim_safe
+from syntropy.lhm.metrics.spec import METRIC_KEY_MAX_LENGTH, METRIC_KEY_PATTERN
+from syntropy.lhm.publish.envelope import PublishEnvelope, PublishReceipt
+from syntropy.lhm.publish.target import SyntropyTarget
 
 _MISSING_HTTPX_MSG = (
     "the HTTP publisher needs httpx, which ships with the publish extra — "
-    'install it with: pip install "lhm[publish]"'
+    'install it with: pip install "syntropy-lhm[publish]"'
 )
 
 #: Cap on any response body the publisher will read (SEC-5): a receipt is a

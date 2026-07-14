@@ -6,13 +6,13 @@ and :func:`resolve_intent` binds intents to real adapter records
 deterministically (typed refusal on anything unresolvable OR ambiguous).
 """
 
-from lhm.nl.binder import (
+from syntropy.lhm.nl.binder import (
     AmbiguousIntentError,
     ResolvedIntent,
     UnresolvableIntentError,
     resolve_intent,
 )
-from lhm.nl.intent import Interpreter, MetricIntent
+from syntropy.lhm.nl.intent import Interpreter, MetricIntent
 
 __all__ = [
     "AmbiguousIntentError",

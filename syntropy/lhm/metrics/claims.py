@@ -32,7 +32,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 
-from lhm.errors import LhmError
+from syntropy.lhm.errors import LhmError
 
 #: Clinical-efficacy vocabulary that must never appear in metric text
 #: (PVR R10 lexicon — mirrors the app's evidence-section claim-scope test).

@@ -15,10 +15,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-import lhm
-from lhm.contracts import viz as viz_mod
-from lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
-from lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
+from syntropy import lhm
+from syntropy.lhm.contracts import viz as viz_mod
+from syntropy.lhm.metrics.claims import BANNED_LEXICON, ClaimScopeError, assert_claim_safe
+from syntropy.lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
 
 _FIXTURES = Path(viz_mod.__file__).parent / "fixtures"
 
@@ -54,7 +54,8 @@ class TestNoAppImports:
         """
         code = (
             "import sys\n"
-            "import lhm, lhm.metrics.spec, lhm.metrics.claims, lhm.contracts.viz, lhm.models\n"
+            "import syntropy.lhm, syntropy.lhm.metrics.spec, syntropy.lhm.metrics.claims, "
+            "syntropy.lhm.contracts.viz, syntropy.lhm.models\n"
             "banned = {'reflex', 'sqlmodel', 'syntropy_journals', 'sqlalchemy'}\n"
             "loaded = {m.split('.')[0] for m in sys.modules}\n"
             "hit = banned & loaded\n"
@@ -179,7 +180,7 @@ class TestVizContract:
     def test_export_matches_committed_schema_byte_for_byte(self) -> None:
         assert viz_mod.export_schema() == viz_mod.committed_schema(), (
             "the committed lhm-viz.v1.schema.json drifted from the model — "
-            "regenerate with `python -m lhm.contracts.viz` ONLY for an "
+            "regenerate with `python -m syntropy.lhm.contracts.viz` ONLY for an "
             "intentional additive change (breaking → mint v2)"
         )
 
@@ -234,7 +235,7 @@ class TestVizContract:
 # --------------------------------------------------------------------------- #
 class TestFhirDecisions:
     def test_emit_line_is_r4b(self) -> None:
-        from lhm.models import FHIR_VERSION
+        from syntropy.lhm.models import FHIR_VERSION
 
         assert FHIR_VERSION == "R4B"
 
@@ -393,11 +394,11 @@ class TestAppIndependenceAllowlist:
     def test_all_lhm_modules_within_allowlist(self) -> None:
         code = (
             "import pkgutil, sys, importlib\n"
-            "import lhm\n"
-            "for m in pkgutil.walk_packages(lhm.__path__, prefix='lhm.'):\n"
+            "import syntropy.lhm as lhm\n"
+            "for m in pkgutil.walk_packages(lhm.__path__, prefix='syntropy.lhm.'):\n"
             "    importlib.import_module(m.name)\n"
             "allow = set(sys.stdlib_module_names) | {\n"
-            "    'lhm', 'pydantic', 'pydantic_core', 'annotated_types',\n"
+            "    'syntropy', 'pydantic', 'pydantic_core', 'annotated_types',\n"
             "    'typing_extensions', 'fhir', 'fhir_core', '_virtualenv',\n"
             "    'typing_inspection',\n"
             # L1 note: fhir_core soft-imports PyYAML when present (a
@@ -429,12 +430,14 @@ class TestInstallIntegrity:
     def test_schema_loads_via_package_resources(self) -> None:
         from importlib import resources
 
-        text = resources.files("lhm.contracts").joinpath("lhm-viz.v1.schema.json").read_text()
+        text = (
+            resources.files("syntropy.lhm.contracts").joinpath("lhm-viz.v1.schema.json").read_text()
+        )
         assert '"lhm-viz/v1"' in text
 
     def test_fixtures_load_via_package_resources(self) -> None:
         from importlib import resources
 
-        root = resources.files("lhm.contracts").joinpath("fixtures")
+        root = resources.files("syntropy.lhm.contracts").joinpath("fixtures")
         valid = [p.name for p in root.joinpath("valid").iterdir() if p.name.endswith(".json")]
         assert len(valid) >= 2, "fixtures missing from package data"

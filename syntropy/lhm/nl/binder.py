@@ -33,10 +33,15 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Sequence
 
-from lhm.errors import LhmError
-from lhm.models.mapping import OrderRecord, RegimenStartRecord, SeriesRecord, _require_aware
-from lhm.nl.intent import MetricIntent
-from lhm.tools.pipeline import LhmAdapter, outcome_kind_for_code
+from syntropy.lhm.errors import LhmError
+from syntropy.lhm.models.mapping import (
+    OrderRecord,
+    RegimenStartRecord,
+    SeriesRecord,
+    _require_aware,
+)
+from syntropy.lhm.nl.intent import MetricIntent
+from syntropy.lhm.tools.pipeline import LhmAdapter, outcome_kind_for_code
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-import lhm
-from lhm import (
+from syntropy import lhm
+from syntropy.lhm import (
     AmbiguousIntentError,
     ClaimScopeError,
     LhmError,

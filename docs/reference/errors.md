@@ -11,17 +11,17 @@ exception *attributes* for in-process use only.
 | `LhmError` | `Exception` | never raised directly — the root every SDK refusal below mixes in |
 | `ClaimScopeError` | `ValueError`, `LhmError` | `assert_claim_safe` — via `manage`, `to_viz_payload`, every publisher |
 | `MappingError` | `ValueError`, `LhmError` | `map_order` / `map_regimen_start` / `map_series`, and the tz/opacity boundary checks in `fetch` and the binder |
-| `UnresolvableIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `lhm.ask` |
-| `AmbiguousIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `lhm.ask` |
+| `UnresolvableIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `syntropy.lhm.ask` |
+| `AmbiguousIntentError` | `LookupError`, `LhmError` | `resolve_intent` / `syntropy.lhm.ask` |
 | `PublishTransportError` | `RuntimeError`, `LhmError` | `HttpPublisher.publish` / `.unpublish` |
 
 ## `LhmError` — the root of every SDK refusal
 
-Every public LHM exception subclasses `lhm.LhmError` **in addition to** its
+Every public LHM exception subclasses `syntropy.lhm.LhmError` **in addition to** its
 original stdlib base (multiple inheritance, additive-only):
 
 ```python
-import lhm
+from syntropy import lhm
 
 try:
     result = await lhm.ask(prompt, adapter=adapter, interpreter=interpreter)
@@ -121,6 +121,6 @@ envelope is idempotency-keyed (the backend dedupes). A definitive server
   the key shape (refused before any URL is built), and
   `HttpPublisher(max_attempts=0)`.
 - **`ImportError`** — constructing `HttpPublisher` without the transport
-  extra; the message names the fix (`pip install "lhm[publish]"`).
+  extra; the message names the fix (`pip install "syntropy-lhm[publish]"`).
 - **`NotImplementedError`** — `InProcessPublisher.unpublish` when no
   `remove_callback` was injected.

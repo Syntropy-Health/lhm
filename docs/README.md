@@ -10,7 +10,7 @@ generator required. Start with the [quickstart](guide/quickstart.md); the
 |---|---|
 | [Quickstart](guide/quickstart.md) | Install, then the 5-minute path: synthetic fixtures → `fetch` → `analyze` → `manage` → `to_viz_payload`, every stage by hand |
 | [Adapters](guide/adapters.md) | The `LhmAdapter` contract — the only integration you must write — with a complete CSV-backed example |
-| [Natural language & `lhm.ask`](guide/nl-and-ask.md) | `MetricIntent`, the BYO-LLM `Interpreter`, the deterministic binder's refusal semantics, and the one-liner end to end |
+| [Natural language & `syntropy.lhm.ask`](guide/nl-and-ask.md) | `MetricIntent`, the BYO-LLM `Interpreter`, the deterministic binder's refusal semantics, and the one-liner end to end |
 | [Publishing](guide/publish.md) | The `lhm-publish/v1` envelope, `SyntropyTarget`, key handling, retry/idempotency semantics, in-process publishing |
 | [The honesty layer](guide/honesty-layer.md) | Why the claim-scope guard is structural, the confidence tiers, the caveats-verbatim rule, and the render gates |
 

@@ -20,13 +20,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import lhm.metrics.corrections as corrections_mod
-from lhm.fixtures import synthetic_order, synthetic_regimen_start
-from lhm.metrics.claims import ClaimScopeError
-from lhm.metrics.corrections import CORRECTION_HOOKS, run_corrections
-from lhm.metrics.spec import CorrectionResult
-from lhm.models.mapping import SeriesPoint, SeriesRecord
-from lhm.tools import analyze, fetch, manage
+import syntropy.lhm.metrics.corrections as corrections_mod
+from syntropy.lhm.fixtures import synthetic_order, synthetic_regimen_start
+from syntropy.lhm.metrics.claims import ClaimScopeError
+from syntropy.lhm.metrics.corrections import CORRECTION_HOOKS, run_corrections
+from syntropy.lhm.metrics.spec import CorrectionResult
+from syntropy.lhm.models.mapping import SeriesPoint, SeriesRecord
+from syntropy.lhm.tools import analyze, fetch, manage
 
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -218,7 +218,7 @@ class TestManageR3R5R10:
         only the typed re-validation pins today's literal."""
         import json
 
-        from lhm.metrics.spec import MetricSpec
+        from syntropy.lhm.metrics.spec import MetricSpec
 
         sig = await self._candidate()
         out = await manage("add", sig)
@@ -248,7 +248,7 @@ class TestQgRoundAdditions:
         assert await analyze(aligned) == ()
 
     async def test_naive_timestamp_from_adapter_fails_loud(self) -> None:
-        from lhm.models.mapping import MappingError
+        from syntropy.lhm.models.mapping import MappingError
 
         class NaiveSeries(_Adapter):
             async def read_outcome_series(self, user_scope):

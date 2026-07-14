@@ -19,27 +19,27 @@ from typing import Sequence
 
 import pytest
 
-from lhm.ask import AskResult, ask
-from lhm.fixtures.synthetic import (
+from syntropy.lhm.ask import AskResult, ask
+from syntropy.lhm.fixtures.synthetic import (
     SYNTHETIC_EPOCH,
     synthetic_order,
     synthetic_regimen_start,
     synthetic_series,
     synthetic_subject_ref,
 )
-from lhm.models.mapping import (
+from syntropy.lhm.models.mapping import (
     OrderRecord,
     RegimenStartRecord,
     SeriesPoint,
     SeriesRecord,
 )
-from lhm.nl import (
+from syntropy.lhm.nl import (
     Interpreter,
     MetricIntent,
     UnresolvableIntentError,
     resolve_intent,
 )
-from lhm.publish import PublishReceipt, SyntropyTarget
+from syntropy.lhm.publish import PublishReceipt, SyntropyTarget
 
 SCOPE = "test-subject-001"
 
@@ -294,7 +294,7 @@ async def test_empty_code_short_circuits_and_refuses_cleanly():
 
 async def test_ambiguous_input_query_refuses_typed():
     """ "vitamin" matching Vitamin D3 AND Vitamin C must refuse, not merge."""
-    from lhm.nl import AmbiguousIntentError
+    from syntropy.lhm.nl import AmbiguousIntentError
 
     adapter = RecordAdapter(
         orders=(_order("Vitamin D3"), _order("Vitamin C", day=1)),
@@ -334,7 +334,7 @@ async def test_same_display_different_code_series_refuse_as_ambiguous():
     (kind derives from the code) — binding both under one metric would merge
     distinct downstream series. Must refuse, never merge.
     """
-    from lhm.nl import AmbiguousIntentError
+    from syntropy.lhm.nl import AmbiguousIntentError
 
     wearable = SeriesRecord(
         subject_ref=SCOPE,
@@ -379,7 +379,7 @@ async def test_same_display_same_code_series_repeats_still_bind():
 
 
 async def test_ambiguous_outcome_query_refuses_typed():
-    from lhm.nl import AmbiguousIntentError
+    from syntropy.lhm.nl import AmbiguousIntentError
 
     adapter = RecordAdapter(
         orders=(_order(),),
@@ -403,7 +403,7 @@ async def test_ambiguous_outcome_query_refuses_typed():
 async def test_naive_observed_at_raises_labeled_error_not_typeerror():
     from datetime import datetime
 
-    from lhm.models.mapping import MappingError
+    from syntropy.lhm.models.mapping import MappingError
 
     naive_points = (
         SeriesPoint(observed_at=SYNTHETIC_EPOCH + timedelta(days=1), value=2.0),
@@ -426,7 +426,7 @@ async def test_naive_observed_at_raises_labeled_error_not_typeerror():
 async def test_all_naive_series_also_refuses_labeled():
     from datetime import datetime
 
-    from lhm.models.mapping import MappingError
+    from syntropy.lhm.models.mapping import MappingError
 
     adapter = RecordAdapter(
         orders=(_order(),),
@@ -544,7 +544,7 @@ async def test_ask_publish_via_mock_transport_end_to_end():
             },
         )
 
-    from lhm.publish import HttpPublisher
+    from syntropy.lhm.publish import HttpPublisher
 
     result = await ask(
         "magnesium vs sleep",
@@ -571,8 +571,8 @@ async def test_mutated_banned_suggestion_hard_raises_and_never_touches_transport
 
     httpx = pytest.importorskip("httpx")
 
-    from lhm.metrics.claims import ClaimScopeError
-    from lhm.publish import HttpPublisher
+    from syntropy.lhm.metrics.claims import ClaimScopeError
+    from syntropy.lhm.publish import HttpPublisher
 
     result = await ask(
         "magnesium vs sleep",

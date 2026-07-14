@@ -7,17 +7,17 @@ data*, never a causal or efficacy claim; the [honesty layer](honesty-layer.md)
 enforces that structurally.
 
 This page walks the whole pipeline **by hand** — no LLM, no network — using
-the SDK's bundled synthetic fixtures. The NL front door (`lhm.ask`) is
-covered in [Natural language & `lhm.ask`](nl-and-ask.md).
+the SDK's bundled synthetic fixtures. The NL front door (`syntropy.lhm.ask`) is
+covered in [Natural language & `syntropy.lhm.ask`](nl-and-ask.md).
 
 ## Install
 
 ```bash
-pip install lhm                # core: clinical mapping + pipeline + contracts
-pip install "lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
-pip install "lhm[publish]"     # + the HTTP publisher (httpx transport)
+pip install syntropy-lhm                # core: clinical mapping + pipeline + contracts
+pip install "syntropy-lhm[units]"       # + UCUM quantity validation (pint/ucumvert)
+pip install "syntropy-lhm[publish]"     # + the HTTP publisher (httpx transport)
 
-# pip install "lhm[stats]"     # v2 — not yet published (the numerical-
+# pip install "syntropy-lhm[stats]"     # v2 — not yet published (the numerical-
 #                              # estimator extra arrives with the v2
 #                              # estimators; it does not exist today)
 ```
@@ -35,15 +35,15 @@ outputs — the NL layer is optional sugar on top of exactly these calls:
 fetch (align your records)  →  analyze (tier + corrections)  →  manage (claim gate)  →  to_viz_payload (render contract)
 ```
 
-Run this script as-is — it uses `lhm.fixtures`, the deterministic synthetic
+Run this script as-is — it uses `syntropy.lhm.fixtures`, the deterministic synthetic
 generators (fixed epoch, obviously-fake compound names, opaque subject
 tokens — zero personal data by construction):
 
 ```python
 import asyncio
 
-from lhm import VizPoint, analyze, fetch, manage, to_viz_payload
-from lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
+from syntropy.lhm import VizPoint, analyze, fetch, manage, to_viz_payload
+from syntropy.lhm.fixtures import synthetic_order, synthetic_regimen_start, synthetic_series
 
 SEED = 11  # deterministic — same seed, same records, same numbers
 
@@ -137,6 +137,6 @@ publisher's gates.
 
 - Feed your **own data** in: [Adapters](adapters.md) — three async readers
   are the whole integration.
-- Ask in **plain language**: [Natural language & `lhm.ask`](nl-and-ask.md).
+- Ask in **plain language**: [Natural language & `syntropy.lhm.ask`](nl-and-ask.md).
 - Put a metric on a **dashboard**: [Publishing](publish.md).
 - Understand the **guarantees**: [The honesty layer](honesty-layer.md).
