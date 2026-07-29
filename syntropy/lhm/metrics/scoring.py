@@ -111,12 +111,26 @@ def _require_aware(dt: datetime, what: str) -> datetime:
 
 
 def _window(samples: Sequence[Sample], *, as_of: datetime, window_days: int) -> list[Sample]:
-    """Chronologically sorted in-window samples; rejects naive timestamps."""
+    """Chronologically sorted in-window samples; rejects naive timestamps
+    and non-finite values (QG 2b — a nan/inf sample must never reach an
+    estimator).
+
+    QG 2g: the window boundary is CALENDAR-DATE based so it agrees exactly
+    with the estimators' ``window_days``-date grid (``as_of.date()`` back
+    through ``window_days - 1`` days) — the old time-based ``as_of -
+    window_days`` cut kept samples on a 29th calendar date the grid never
+    counted.
+    """
     _require_aware(as_of, "as_of")
-    start = as_of - timedelta(days=window_days)
-    kept = [
-        (t, float(v)) for t, v in samples if start <= _require_aware(t, "sample timestamp") <= as_of
-    ]
+    start_date = as_of.date() - timedelta(days=window_days - 1)
+    kept: list[Sample] = []
+    for t, v in samples:
+        _require_aware(t, "sample timestamp")
+        value = float(v)
+        if not math.isfinite(value):
+            raise ValueError(f"sample value must be finite (got {v!r} at {t!r})")
+        if t <= as_of and t.date() >= start_date:
+            kept.append((t, value))
     kept.sort(key=lambda s: s[0])
     return kept
 
@@ -141,6 +155,27 @@ def _median(values: Sequence[float]) -> float:
     n = len(ordered)
     mid = n // 2
     return ordered[mid] if n % 2 else (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def _degenerate_score(
+    domain: str, method: str, params: dict[str, object], n_effective: int
+) -> DomainScore:
+    """QG 2a/2c — the recorded degenerate result: neutral 50, flagged.
+
+    Used whenever an estimator INTERMEDIATE goes non-finite (overflow, nan
+    slope over identical timestamps) or a scale collapses (MAD == 0):
+    the honest answer is "no informative signal", never a saturated
+    extreme. ``params['degenerate']`` blocks readiness (see
+    :func:`is_ready`).
+    """
+    params["degenerate"] = True
+    return DomainScore(
+        domain=domain,
+        score=50.0,
+        n_effective=n_effective,
+        method=method,
+        params=params,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -176,6 +211,8 @@ def score_consistency(
     proportion = successes / n
     lo, hi = proportion_confint(successes, n, alpha=0.05, method="wilson")
     params.update(successes=successes, n=n)
+    if not all(math.isfinite(x) for x in (proportion, float(lo), float(hi))):
+        return _degenerate_score("consistency", "binomial_wilson", params, n)
     return DomainScore(
         domain="consistency",
         score=_clipped_score(100.0 * proportion, params),
@@ -211,7 +248,13 @@ def score_sentiment_trajectory(
     values = [v for _, v in kept]
     baseline = _median(values)
     mad = _median([abs(v - baseline) for v in values])
-    robust_scale = 1.4826 * mad if mad > 0 else 1e-9
+    if mad == 0:
+        # QG 2c: a collapsed scale is a DEGENERATE state, not an epsilon
+        # division — pre-fix a 0.0001 wiggle over a flat baseline
+        # saturated the logistic to 99.97.
+        params["mad"] = 0.0
+        return _degenerate_score("sentiment_trajectory", "robust_z_theil_sen", params, n)
+    robust_scale = 1.4826 * mad
 
     recent_cut = as_of - timedelta(days=7)
     recent = [v for t, v in kept if t >= recent_cut] or values[-max(1, n // 4) :]
@@ -224,8 +267,16 @@ def score_sentiment_trajectory(
     #: slope expressed as robust units of change over a fortnight.
     z_slope = slope * 14.0 / robust_scale
 
+    # QG 2a: guard EVERY intermediate — ``min(8.0, nan) == 8.0`` would
+    # otherwise saturate a nan (e.g. Theil–Sen over identical timestamps)
+    # into a 99.97 score.
+    if not all(math.isfinite(x) for x in (z_recent, slope, z_slope)):
+        return _degenerate_score("sentiment_trajectory", "robust_z_theil_sen", params, n)
+
     signal = max(-8.0, min(8.0, 0.5 * z_recent + 0.5 * z_slope))
     raw = 100.0 / (1.0 + math.exp(-signal))
+    if not (math.isfinite(signal) and math.isfinite(raw)):
+        return _degenerate_score("sentiment_trajectory", "robust_z_theil_sen", params, n)
     params.update(z_recent=z_recent, theil_sen_slope_per_day=slope, signal=signal)
     return DomainScore(
         domain="sentiment_trajectory",
@@ -265,6 +316,8 @@ def score_nutrition_regularity(
     ]
     mean = sum(counts) / len(counts)
     variance = sum((c - mean) ** 2 for c in counts) / len(counts)
+    if not (math.isfinite(mean) and math.isfinite(variance)):
+        return _degenerate_score("nutrition_regularity", "inverse_cv", params, n)
     cv_raw = math.sqrt(variance) / mean if mean > 0 else float("inf")
     cv_used = min(1.0, cv_raw)
     if cv_raw > 1.0:
@@ -306,6 +359,8 @@ def score_symptom_load(
     decay = math.log(2.0) / _EW_HALF_LIFE_DAYS
     weights = [math.exp(-decay * (as_of - t).total_seconds() / 86400.0) for t, _ in kept]
     ew_mean = sum(w * v for w, (_, v) in zip(weights, kept)) / sum(weights)
+    if not math.isfinite(ew_mean):
+        return _degenerate_score("symptom_load", "ew_mean_inverted", params, n)
     load = (ew_mean - ORDINAL_MIN) / (ORDINAL_MAX - ORDINAL_MIN)
     params.update(ew_mean=ew_mean)
     return DomainScore(
@@ -368,7 +423,13 @@ def score_domain(
         raise KeyError(f"unknown scoring domain {domain!r} — v1 set: {V1_DOMAINS}")
     if not SCORING_AVAILABLE:
         return _stub_score(domain, samples, as_of=as_of, window_days=window_days)
-    return _ESTIMATORS[domain](samples, as_of=as_of, window_days=window_days)
+    try:
+        return _ESTIMATORS[domain](samples, as_of=as_of, window_days=window_days)
+    except ImportError:
+        # QG 2e: ``find_spec`` proves importABILITY, not a working import —
+        # a broken/half-installed extra degrades to the recorded stub
+        # exactly like an absent one (the probe is advisory).
+        return _stub_score(domain, samples, as_of=as_of, window_days=window_days)
 
 
 # --------------------------------------------------------------------------- #
@@ -385,9 +446,17 @@ def is_ready(
 ) -> bool:
     """The A&D §3.4 readiness predicate — pure, fail-closed on EVERY conjunct.
 
-    ``ready = SCORING_AVAILABLE and method != "stub" and n_effective >=
-    N_MIN[domain] and distinct_days >= MIN_DISTINCT_DAYS and in-range and
-    claim_gate_passed and valence_gate_passed``.
+    ``ready = SCORING_AVAILABLE and method != "stub" and not degenerate and
+    not clipped and n_effective >= N_MIN[domain] and distinct_days >=
+    MIN_DISTINCT_DAYS and in the MODULE-declared range and claim_gate_passed
+    and valence_gate_passed``.
+
+    QG 2d decisions:
+    * ``clipped`` blocks readiness — a clipped score means the raw
+      statistic left the declared range; that number is not surfaceable.
+    * bounds are checked against the MODULE constants (``SCORE_MIN`` /
+      ``SCORE_MAX``) AND the score's self-declared bounds must EQUAL them
+      — self-declared bounds are spoofable and never self-ratify.
 
     The gate flags DEFAULT to ``False`` — a caller that never ran the
     claim/valence gates cannot mark a score ready by omission.
@@ -402,9 +471,14 @@ def is_ready(
     return (
         SCORING_AVAILABLE
         and score.method != "stub"
+        and not score.params.get("degenerate")
+        and not score.params.get("clipped")
         and score.n_effective >= N_MIN[key]
         and distinct_days >= MIN_DISTINCT_DAYS
-        and score.score_min <= score.score <= score.score_max
+        and score.score_min == SCORE_MIN
+        and score.score_max == SCORE_MAX
+        and SCORE_MIN <= score.score <= SCORE_MAX
+        and math.isfinite(score.score)
         and claim_gate_passed
         and valence_gate_passed
     )

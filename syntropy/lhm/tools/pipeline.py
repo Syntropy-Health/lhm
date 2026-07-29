@@ -13,6 +13,7 @@ estimators are v2 (ADR-0002 ``FitBlock.method`` slot).
 from __future__ import annotations
 
 import hashlib
+import math
 from datetime import datetime
 from typing import Literal, Protocol, Sequence
 
@@ -237,14 +238,21 @@ def _stub_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int]:
     return max(-1.0, min(1.0, delta / spread)), len(active)
 
 
-def _real_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int] | None:
+def _real_strength(
+    pairs: Sequence[AlignedPair],
+) -> tuple[float, int, tuple[float, float]] | None:
     """The HD-4 analyze seam: standardized OLS slope of outcome on
     input-activity (statsmodels) — the real estimator behind the
     ``[lhm-scoring]`` extra (A&D D-D).
 
-    Returns ``None`` when no real fit exists — extra absent, or a
-    degenerate contrast (one empty activity group / zero spread) — and the
-    caller falls back to the deterministic stub with ``method="stub"``:
+    Returns ``(strength, n_active, posterior_ci)`` — the CI is the
+    model's own ``conf_int()`` slope interval, standardized into the same
+    [-1, 1] strength units (QG 2f: never the stub's fabricated ±).
+
+    Returns ``None`` when no real fit exists — extra absent OR broken
+    (``find_spec`` proves importability, not import success — QG 2e), or
+    a degenerate contrast (one empty activity group / zero spread) — and
+    the caller falls back to the deterministic stub with ``method="stub"``:
     the degradation is RECORDED, never silently papered over.
     """
     if not scoring.SCORING_AVAILABLE:
@@ -262,20 +270,41 @@ def _real_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int] | None:
     var_y = sum((v - mean_y) ** 2 for v in y)
     if var_x == 0 or var_y == 0:
         return None
-    import statsmodels.api as sm
+    try:
+        import statsmodels.api as sm
+    except ImportError:
+        # QG 2e: importable-but-broken extra → recorded stub, not a crash.
+        return None
 
     model = sm.OLS(y, sm.add_constant(x)).fit()
     slope = float(model.params[1])
     # Standardize: slope * sd(x)/sd(y) == Pearson r for the simple
     # regression — a self-normalized strength in [-1, 1] by construction
     # (clipped defensively against float error).
-    strength = slope * (var_x**0.5) / (var_y**0.5)
-    return max(-1.0, min(1.0, strength)), len(active)
+    scale = (var_x**0.5) / (var_y**0.5)
+    strength = slope * scale
+    ci_lo, ci_hi = (float(c) for c in model.conf_int()[1])
+    if not all(math.isfinite(v) for v in (strength, ci_lo, ci_hi)):
+        return None
+    ci = (
+        max(-1.0, min(1.0, ci_lo * scale)),
+        max(-1.0, min(1.0, ci_hi * scale)),
+    )
+    return max(-1.0, min(1.0, strength)), len(active), ci
 
 
-_BASE_CAVEATS = (
+_STUB_CAVEATS = (
     "Personal n-of-1 observation — a correlation in your own data, not a causal claim.",
     "v0.1 stub estimate: corrections are recorded but not yet applied; interval is provisional.",
+)
+
+#: QG 2f — the real-estimator caveat set: the interval comes from the model
+#: fit, so the "stub estimate / provisional interval" framing would be
+#: FALSE provenance on this path. Triad markers stay present (correlation
+#: framing + the interval uncertainty marker).
+_REAL_CAVEATS = (
+    "Personal n-of-1 observation — a correlation in your own data, not a causal claim.",
+    "Interval from the model fit; corrections are recorded but not yet applied.",
 )
 
 
@@ -293,15 +322,19 @@ async def analyze(aligned: Sequence[AlignedData]) -> tuple[CandidateSignal, ...]
         # method slot RECORDS which one produced the number.
         real = _real_strength(data.pairs)
         if real is not None:
-            (strength, n_active), method = real, "ols_standardized"
+            (strength, n_active, posterior_ci), method = real, "ols_standardized"
+            caveats = _REAL_CAVEATS
         else:
             (strength, n_active), method = _stub_strength(data.pairs), "stub"
+            magnitude_stub = abs(strength)
+            half_width = max(0.1, (1.0 - magnitude_stub) / 2)  # provisional interval
+            posterior_ci = (strength - half_width, strength + half_width)
+            caveats = _STUB_CAVEATS
         magnitude = abs(strength)
         tier = _tier_for(strength, data.rx_input)
-        half_width = max(0.1, (1.0 - magnitude) / 2)  # provisional interval
         fit = FitBlock(
             posterior_mean=strength,
-            posterior_ci=(strength - half_width, strength + half_width),
+            posterior_ci=posterior_ci,
             n_effective=n_active,
             fit_score=magnitude,
             method=method,
@@ -326,7 +359,7 @@ async def analyze(aligned: Sequence[AlignedData]) -> tuple[CandidateSignal, ...]
                 outcome=data.outcome,
                 fit=fit,
                 confidence=tier,
-                caveats=_BASE_CAVEATS,
+                caveats=caveats,
                 rx_input=data.rx_input,
             )
         )

@@ -217,6 +217,219 @@ class TestTypedInputOnlyApi:
 
 
 # --------------------------------------------------------------------------- #
+# QG cluster 2 — degenerate/non-finite guards + window/day-grid agreement
+# --------------------------------------------------------------------------- #
+
+
+class TestNonFiniteAndDegenerateGuards:
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_sample_values_are_rejected_loudly(self, bad: float) -> None:
+        """QG 2b: a nan/inf sample must never flow into an estimator —
+        pre-fix a nan sample saturated the logistic to 99.97 ready=True."""
+        for fn in (
+            score_consistency,
+            score_sentiment_trajectory,
+            score_nutrition_regularity,
+            score_symptom_load,
+        ):
+            with pytest.raises(ValueError, match="finite"):
+                fn([(_days_ago(1), bad), (_days_ago(2), 1.0)], as_of=AS_OF)
+
+    def test_identical_timestamps_degenerate_not_max(self) -> None:
+        """QG 2a: Theil–Sen over identical timestamps yields a nan slope;
+        pre-fix ``min(8.0, nan) == 8.0`` scored 99.97. Post-fix: neutral
+        50 + ``params['degenerate']`` and NEVER ready."""
+        t = _days_ago(3)
+        samples = [(t, float(v)) for v in range(10)]
+        d = score_sentiment_trajectory(samples, as_of=AS_OF)
+        assert d.score == pytest.approx(50.0)
+        assert d.params.get("degenerate") is True
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_mad_zero_is_degenerate_neutral_not_saturated(self) -> None:
+        """QG 2c: MAD==0 must not fall back to a 1e-9 epsilon divisor —
+        pre-fix a 0.0001 wiggle over a flat baseline scored 99.97."""
+        samples = [(_days_ago(27 - i), 0.5) for i in range(27)] + [(_days_ago(0), 0.5001)]
+        d = score_sentiment_trajectory(samples, as_of=AS_OF)
+        assert d.score == pytest.approx(50.0)
+        assert d.params.get("degenerate") is True
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_window_and_day_grid_agree_no_off_by_one(self) -> None:
+        """QG 2g: the estimator day-grid covers ``window_days`` calendar
+        dates — a sample whose calendar date falls OUTSIDE that grid must
+        not survive ``_window`` (pre-fix: 29 dates kept vs 28 counted)."""
+        samples = [(AS_OF - timedelta(days=28), 1.0), (_days_ago(1), 1.0)]
+        d = score_nutrition_regularity(samples, as_of=AS_OF)
+        assert d.n_effective == 1
+
+    def test_earliest_grid_date_is_kept_regardless_of_time_of_day(self) -> None:
+        """The date-grid boundary is calendar-date based: a sample 27 days
+        and 11 hours ago still lands on the oldest grid date and counts."""
+        samples = [(AS_OF - timedelta(days=27, hours=11), 1.0), (_days_ago(1), 1.0)]
+        d = score_nutrition_regularity(samples, as_of=AS_OF)
+        assert d.n_effective == 2
+
+
+class TestBrokenExtraDegradesToStub:
+    def test_importable_but_broken_extra_falls_back_to_stub(self, tmp_path) -> None:
+        """QG 2e: ``find_spec`` proves importABILITY, not import success.
+        A broken statsmodels/scipy on the path must degrade to the
+        recorded stub, never crash the scorer."""
+        for pkg in ("statsmodels", "scipy"):
+            (tmp_path / pkg).mkdir()
+            (tmp_path / pkg / "__init__.py").write_text("raise ImportError('broken wheel')\n")
+        code = (
+            f"import sys; sys.path.insert(0, {str(tmp_path)!r});"
+            "import syntropy.lhm.metrics.scoring as s;"
+            "assert s.SCORING_AVAILABLE is True, 'probe should see the broken pkg';"
+            "from datetime import datetime, timezone, timedelta;"
+            "as_of = datetime(2026, 7, 28, tzinfo=timezone.utc);"
+            "d = s.score_domain('consistency',"
+            " [(as_of - timedelta(days=1), 1.0)], as_of=as_of);"
+            "assert d.method == 'stub', d.method;"
+            "d2 = s.score_domain('sentiment_trajectory',"
+            " [(as_of - timedelta(days=i), float(i % 3)) for i in range(1, 10)],"
+            " as_of=as_of);"
+            "assert d2.method == 'stub', d2.method;"
+            "print('BROKEN-EXTRA-OK')"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, timeout=120
+        )
+        assert out.returncode == 0, f"stderr: {out.stderr}"
+        assert "BROKEN-EXTRA-OK" in out.stdout
+
+
+# --------------------------------------------------------------------------- #
+# QG 2h — end-to-end readiness + real-estimator value pins
+# --------------------------------------------------------------------------- #
+
+
+class TestEndToEndReadiness:
+    def test_all_four_domains_reach_ready_from_20_days_of_plausible_samples(self) -> None:
+        """distinct_days threads through EVERY estimator and a plausible
+        20-day series clears every readiness conjunct for all 4 domains."""
+        fixtures: dict[str, list] = {
+            "consistency": [(_days_ago(i), 1.0 if i % 5 else 0.0) for i in range(1, 21)],
+            "sentiment_trajectory": [
+                (_days_ago(i), 0.1 * (20 - i) + (0.05 if i % 2 else -0.05)) for i in range(1, 21)
+            ],
+            "nutrition_regularity": [(_days_ago(i), 1.0) for i in range(1, 21)],
+            "symptom_load": [(_days_ago(i), float(1 + (i % 3))) for i in range(1, 21)],
+        }
+        for domain, samples in fixtures.items():
+            d = score_domain(domain, samples, as_of=AS_OF)
+            assert d.method != "stub", (domain, d.method)
+            assert d.params["distinct_days"] == 20, (domain, d.params)
+            assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is True, (
+                domain,
+                d,
+            )
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float:
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    cov = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
+    vx = sum((a - mx) ** 2 for a in xs)
+    vy = sum((b - my) ** 2 for b in ys)
+    return cov / (vx**0.5 * vy**0.5)
+
+
+def _noisy_aligned(*, flip: bool = False, constant_outcome: bool = False):
+    from syntropy.lhm.metrics.spec import InputRef, OutcomeRef
+    from syntropy.lhm.tools.pipeline import AlignedData, AlignedPair
+
+    rng = random.Random(7)
+    day0 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    pairs = []
+    for i in range(30):
+        active = 0.0 if i < 15 else 1.0
+        if constant_outcome:
+            y = 3.0
+        else:
+            y = 1.0 + active * 1.5 + rng.uniform(-0.5, 0.5)
+            if flip:
+                y = -y
+        pairs.append(AlignedPair(at=day0 + timedelta(days=i), input_active=active, outcome_value=y))
+    return AlignedData(
+        user_scope="user_x",
+        inputs=(InputRef(resource="NutritionOrder", code="supplement-order", display="Mg"),),
+        outcome=OutcomeRef(kind="journal_series", series_key="Sleep quality"),
+        regimen_start=day0 + timedelta(days=15),
+        pairs=tuple(pairs),
+        rx_input=False,
+    )
+
+
+class TestRealEstimatorValuePins:
+    async def test_posterior_mean_is_pearson_r_on_the_fixture(self) -> None:
+        from syntropy.lhm.tools.pipeline import analyze
+
+        data = _noisy_aligned()
+        (candidate,) = await analyze([data])
+        assert candidate.fit.method == "ols_standardized"
+        xs = [p.input_active for p in data.pairs]
+        ys = [p.outcome_value for p in data.pairs]
+        r = _pearson(xs, ys)
+        assert candidate.fit.posterior_mean == pytest.approx(r, rel=1e-9)
+        assert -1.0 <= candidate.fit.posterior_mean <= 1.0
+
+    async def test_sign_flip_flips_the_posterior_mean(self) -> None:
+        from syntropy.lhm.tools.pipeline import analyze
+
+        (pos,) = await analyze([_noisy_aligned()])
+        (neg,) = await analyze([_noisy_aligned(flip=True)])
+        assert neg.fit.posterior_mean == pytest.approx(-pos.fit.posterior_mean, rel=1e-9)
+
+    async def test_constant_outcome_var_zero_degrades_to_stub(self) -> None:
+        from syntropy.lhm.tools.pipeline import analyze
+
+        (candidate,) = await analyze([_noisy_aligned(constant_outcome=True)])
+        assert candidate.fit.method == "stub"
+
+    async def test_real_ci_derives_from_model_conf_int_not_fabricated(self) -> None:
+        """QG 2f: on the real path the posterior_ci is the standardized
+        OLS conf_int, not the stub's ±half-width fabrication."""
+        import statsmodels.api as sm
+
+        from syntropy.lhm.tools.pipeline import analyze
+
+        data = _noisy_aligned()
+        (candidate,) = await analyze([data])
+        xs = [p.input_active for p in data.pairs]
+        ys = [p.outcome_value for p in data.pairs]
+        n = len(xs)
+        mx, my = sum(xs) / n, sum(ys) / n
+        vx = sum((a - mx) ** 2 for a in xs)
+        vy = sum((b - my) ** 2 for b in ys)
+        scale = (vx**0.5) / (vy**0.5)
+        model = sm.OLS(ys, sm.add_constant(xs)).fit()
+        lo, hi = (float(c) for c in model.conf_int()[1])
+        expected = (
+            max(-1.0, min(1.0, lo * scale)),
+            max(-1.0, min(1.0, hi * scale)),
+        )
+        assert candidate.fit.posterior_ci == pytest.approx(expected, rel=1e-9)
+
+    async def test_provisional_stub_caveat_only_on_the_stub_path(self, monkeypatch) -> None:
+        """QG 2f: the 'stub estimate / provisional interval' caveat must not
+        ride a REAL-estimator candidate; it stays on the stub path."""
+        import syntropy.lhm.tools.pipeline as pipeline
+
+        (real,) = await pipeline.analyze([_noisy_aligned()])
+        assert real.fit.method == "ols_standardized"
+        assert not any("stub" in c.lower() for c in real.caveats), real.caveats
+        assert any("interval" in c.lower() for c in real.caveats)
+
+        monkeypatch.setattr(pipeline.scoring, "SCORING_AVAILABLE", False)
+        (stub,) = await pipeline.analyze([_noisy_aligned()])
+        assert stub.fit.method == "stub"
+        assert any("stub" in c.lower() for c in stub.caveats), stub.caveats
+
+
+# --------------------------------------------------------------------------- #
 # Property-style bounds (seeded deterministic sweep — no hypothesis dep)
 # --------------------------------------------------------------------------- #
 
@@ -373,3 +586,40 @@ class TestStubFailsReadiness:
     def test_unknown_domain_fails_closed(self) -> None:
         d = _ready_score(domain="vibes")
         assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    # -- QG 2d: the new conjuncts, each falsified independently ------------- #
+
+    def test_degenerate_flag_fails_readiness(self) -> None:
+        d = _ready_score(params={"distinct_days": MIN_DISTINCT_DAYS + 7, "degenerate": True})
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_clipped_flag_fails_readiness(self) -> None:
+        """A clipped score means the raw statistic left the declared range —
+        that number is not surfaceable (QG 2d decision: clipped blocks)."""
+        d = _ready_score(params={"distinct_days": MIN_DISTINCT_DAYS + 7, "clipped": True})
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_below_range_score_fails(self) -> None:
+        """The LOWER bound is pinned too (pre-fix only 101.0 was tested)."""
+        d = _ready_score(score=-1.0)
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_spoofed_self_declared_bounds_fail(self) -> None:
+        """QG 2d: bounds are checked against the MODULE constants — a score
+        carrying its own widened score_min/score_max cannot self-ratify."""
+        d = _ready_score(score=-1.0, score_min=-50.0)
+        assert is_ready(d, claim_gate_passed=True, valence_gate_passed=True) is False
+        d2 = _ready_score(score=150.0, score_max=200.0)
+        assert is_ready(d2, claim_gate_passed=True, valence_gate_passed=True) is False
+
+    def test_domain_override_branch(self) -> None:
+        """The ``domain=`` override is the lookup key: a valid override
+        rescues an oddly-labelled score; an invalid override fails closed."""
+        odd = _ready_score(domain="not_a_domain")
+        assert (
+            is_ready(odd, "consistency", claim_gate_passed=True, valence_gate_passed=True) is True
+        )
+        assert (
+            is_ready(_ready_score(), "vibes", claim_gate_passed=True, valence_gate_passed=True)
+            is False
+        )
