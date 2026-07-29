@@ -112,7 +112,13 @@ class TestAnalyzeR2:
         assert len(sig.fit.corrections) == 6  # corrections-list-bearing
         lo, hi = sig.fit.posterior_ci
         assert lo < hi  # interval-bearing
-        assert sig.caveats and sig.fit.method == "stub"
+        # HD-4 seam (health-dashboard A&D D-D): with the [lhm-scoring]
+        # extra installed the method slot records the REAL estimator; the
+        # deterministic stub remains the recorded degradation without it.
+        from syntropy.lhm.metrics import scoring
+
+        expected_method = "ols_standardized" if scoring.SCORING_AVAILABLE else "stub"
+        assert sig.caveats and sig.fit.method == expected_method
 
     async def test_planted_separation_reaches_a_persistable_tier(self) -> None:
         """G1.5: the tier surface is PLUMBED (not discriminating) — a fully

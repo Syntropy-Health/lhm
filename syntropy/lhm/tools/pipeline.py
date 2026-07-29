@@ -18,6 +18,7 @@ from typing import Literal, Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from syntropy.lhm.metrics import scoring
 from syntropy.lhm.metrics.claims import assert_claim_safe
 from syntropy.lhm.metrics.corrections import run_corrections
 from syntropy.lhm.metrics.spec import FitBlock, InputRef, MetricSpec, OutcomeRef
@@ -236,6 +237,42 @@ def _stub_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int]:
     return max(-1.0, min(1.0, delta / spread)), len(active)
 
 
+def _real_strength(pairs: Sequence[AlignedPair]) -> tuple[float, int] | None:
+    """The HD-4 analyze seam: standardized OLS slope of outcome on
+    input-activity (statsmodels) — the real estimator behind the
+    ``[lhm-scoring]`` extra (A&D D-D).
+
+    Returns ``None`` when no real fit exists — extra absent, or a
+    degenerate contrast (one empty activity group / zero spread) — and the
+    caller falls back to the deterministic stub with ``method="stub"``:
+    the degradation is RECORDED, never silently papered over.
+    """
+    if not scoring.SCORING_AVAILABLE:
+        return None
+    active = [p.outcome_value for p in pairs if p.input_active >= 0.5]
+    inactive = [p.outcome_value for p in pairs if p.input_active < 0.5]
+    if not active or not inactive:
+        return None
+    x = [p.input_active for p in pairs]
+    y = [p.outcome_value for p in pairs]
+    n = len(pairs)
+    mean_x = sum(x) / n
+    mean_y = sum(y) / n
+    var_x = sum((v - mean_x) ** 2 for v in x)
+    var_y = sum((v - mean_y) ** 2 for v in y)
+    if var_x == 0 or var_y == 0:
+        return None
+    import statsmodels.api as sm
+
+    model = sm.OLS(y, sm.add_constant(x)).fit()
+    slope = float(model.params[1])
+    # Standardize: slope * sd(x)/sd(y) == Pearson r for the simple
+    # regression — a self-normalized strength in [-1, 1] by construction
+    # (clipped defensively against float error).
+    strength = slope * (var_x**0.5) / (var_y**0.5)
+    return max(-1.0, min(1.0, strength)), len(active)
+
+
 _BASE_CAVEATS = (
     "Personal n-of-1 observation — a correlation in your own data, not a causal claim.",
     "v0.1 stub estimate: corrections are recorded but not yet applied; interval is provisional.",
@@ -251,16 +288,23 @@ async def analyze(aligned: Sequence[AlignedData]) -> tuple[CandidateSignal, ...]
     for data in aligned:
         raw_pairs = tuple((p.input_active, p.outcome_value) for p in data.pairs)
         corrections = run_corrections(raw_pairs)  # R4: once per analyze, all six
-        strength, n_active = _stub_strength(data.pairs)
+        # HD-4 seam (A&D D-D): the real estimator when the [lhm-scoring]
+        # extra imports cleanly; else the deterministic stub — and the
+        # method slot RECORDS which one produced the number.
+        real = _real_strength(data.pairs)
+        if real is not None:
+            (strength, n_active), method = real, "ols_standardized"
+        else:
+            (strength, n_active), method = _stub_strength(data.pairs), "stub"
         magnitude = abs(strength)
         tier = _tier_for(strength, data.rx_input)
-        half_width = max(0.1, (1.0 - magnitude) / 2)  # provisional interval (stub)
+        half_width = max(0.1, (1.0 - magnitude) / 2)  # provisional interval
         fit = FitBlock(
             posterior_mean=strength,
             posterior_ci=(strength - half_width, strength + half_width),
             n_effective=n_active,
             fit_score=magnitude,
-            method="stub",
+            method=method,
             corrections=corrections,
         )
         # ASCII-only slug (QG fix: MetricSpec.metric_key pins ^[a-z][a-z0-9_]*$
