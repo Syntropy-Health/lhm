@@ -105,6 +105,10 @@ class DomainScore:
 
 
 def _require_aware(dt: datetime, what: str) -> datetime:
+    # QG 4d — type-check FIRST: a non-datetime raises the typed error
+    # here, never an AttributeError on `.tzinfo`.
+    if not isinstance(dt, datetime):
+        raise ValueError(f"{what} must be a datetime (got {type(dt).__name__} {dt!r})")
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         raise ValueError(f"{what} must be timezone-aware (got naive {dt!r})")
     return dt
