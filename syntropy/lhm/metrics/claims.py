@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from syntropy.lhm.errors import LhmError
 
@@ -44,6 +45,23 @@ BANNED_LEXICON: tuple[str, ...] = (
     "reverse",
     "efficacy",
     "clinical",  # \w* also catches "clinically", "clinical-grade" etc.
+)
+
+#: Advice/diagnosis framing — the D-G brand-wall extension (health-dashboard
+#: A&D §2.6 #1). Personal n-of-1 observations are never advice, a diagnosis,
+#: or a prescription. ``consult`` is deliberately NOT banned: routing the
+#: user to a clinician IS the product. Coupled with the matched
+#: ``_DISCLAIMER_RE`` extension below so the compliant negated frame
+#: ("not a recommendation — your clinician decides") still passes (C1a).
+BANNED_ADVICE_LEXICON: tuple[str, ...] = (
+    "recommend",  # \w* catches "recommendation", "recommended", ...
+    "diagnos",  # diagnose / diagnosis / diagnostic
+    "prescrib",  # prescribe / prescribing / prescribed
+    "advis",  # advise / advisable / advising
+    "advice",
+    "should take",
+    "you should",
+    "at risk",
 )
 
 #: Association-framing markers — at least one caveat must carry one.
@@ -66,7 +84,7 @@ _UNCERTAINTY_MARKERS: tuple[str, ...] = (
 )
 
 _BANNED_RE = re.compile(
-    r"\b(" + "|".join(re.escape(w) for w in BANNED_LEXICON) + r")\w*",
+    r"\b(" + "|".join(re.escape(w) for w in (*BANNED_LEXICON, *BANNED_ADVICE_LEXICON)) + r")\w*",
     re.IGNORECASE,
 )
 
@@ -76,9 +94,20 @@ _BANNED_RE = re.compile(
 # vocabulary would fail-closed the exact text compliance wants. Sentences
 # matching this negated frame are excised BEFORE the denylist scan; the
 # banned check still applies to everything else in the caveat.
+#
+# D-G extension (C1a coupling): the second branch recognizes the negated
+# ADVICE frame ("this is not a recommendation — your clinician decides",
+# "not medical advice") that the BANNED_ADVICE_LEXICON would otherwise
+# fail-close. It excises only up to a clause boundary INCLUDING commas
+# (tighter than the FDA branch) so a smuggled advice clause after a comma
+# ("not a recommendation, but you should take X") is still scanned.
 _DISCLAIMER_RE = re.compile(
+    r"(?:"
     r"not\s+(?:intended|meant)\s+to\s+[^.;]*?"
-    r"(?:diagnose|treat|cure|prevent|mitigate)[^.;]*",
+    r"(?:diagnose|treat|cure|prevent|mitigate)[^.;]*"
+    r"|not\s+(?:a\s+|an\s+)?(?:medical\s+|clinical\s+)?"
+    r"(?:recommendation|advice|diagnosis|prescription)[^.;,]*"
+    r")",
     re.IGNORECASE,
 )
 
@@ -159,4 +188,139 @@ def assert_claim_safe(
         )
 
 
-__all__ = ["BANNED_LEXICON", "ClaimScopeError", "assert_claim_safe"]
+# --------------------------------------------------------------------------- #
+# D-G #2 — valence guard (health-dashboard A&D §2.6): the render contract
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ScoreRendering:
+    """The structural render contract a domain score surfaces through (D-G #2).
+
+    Every field the valence guard checks is HERE, by construction — a
+    surface that wants a band label, a color, or a reference frame must
+    route it through this contract, where ``assert_valence_safe`` can
+    reject verdict framing before anything renders.
+
+    * ``band_label`` — optional short label for the score's band. Must be
+      neutral-magnitude / personal-trajectory copy ("lower than your
+      recent range"), never a qualitative verdict ("poor", "at-risk").
+    * ``color_role`` — semantic color slot, NOT a hex value. Allowlisted
+      to non-diagnostic roles; "danger"/"red"/traffic-light semantics are
+      structurally rejected.
+    * ``reference_frame`` — what the score is framed against. Only the
+      user's own trajectory or a neutral magnitude scale pass; population
+      reference-range verdict framing is rejected.
+    """
+
+    domain: str
+    score: float
+    band_label: str | None = None
+    color_role: str = "neutral"
+    reference_frame: str = "personal-trajectory"
+
+
+#: Qualitative-verdict vocabulary banned from band labels (word-stem match).
+_BANNED_VALENCE_LEXICON: tuple[str, ...] = (
+    "good",
+    "bad",
+    "poor",
+    "excellent",
+    "great",
+    "terrible",
+    "worst",
+    "best",
+    "ideal",
+    "optimal",
+    "suboptimal",  # \b anchors the stem match, so this needs its own entry
+    "healthy",
+    "unhealthy",
+    "normal",  # also catches "normalized"? accepted over-match (fail-closed)
+    "abnormal",
+    "risk",  # catches "at risk", "at-risk", "risky"
+    "danger",
+    "warning",
+    "alarm",
+    "concern",
+    "critical",
+    "fail",
+)
+
+_BANNED_VALENCE_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in _BANNED_VALENCE_LEXICON) + r")\w*",
+    re.IGNORECASE,
+)
+
+#: Non-diagnostic color roles (allowlist — fail-closed: anything else raises).
+_ALLOWED_COLOR_ROLES: frozenset[str] = frozenset({"neutral", "muted", "accent", "informational"})
+
+#: Permitted score framings (allowlist): the user's own trajectory or a
+#: neutral magnitude scale. Population reference-range verdicts never pass.
+_ALLOWED_REFERENCE_FRAMES: frozenset[str] = frozenset({"personal-trajectory", "neutral-magnitude"})
+
+
+def assert_valence_safe(rendering: ScoreRendering) -> None:
+    """Gate a score's render contract; raise ``ClaimScopeError`` on violation.
+
+    Structural checks (D-G #2): no qualitative-verdict band labels, no
+    diagnostic color semantics, no population-reference verdict framing.
+    Fail-CLOSED: callers must not render a rejected ``ScoreRendering``
+    (and must not "fix" it automatically).
+    """
+    if rendering.band_label is not None:
+        hit = _BANNED_VALENCE_RE.search(_fold(rendering.band_label))
+        if hit is not None:
+            raise ClaimScopeError(
+                f"qualitative-verdict band label {rendering.band_label!r} "
+                f"(term {hit.group(0)!r}) — bands use neutral-magnitude / "
+                "personal-trajectory copy only (D-G valence)"
+            )
+
+    if rendering.color_role not in _ALLOWED_COLOR_ROLES:
+        raise ClaimScopeError(
+            f"diagnostic color role {rendering.color_role!r} — allowed "
+            f"non-diagnostic roles: {sorted(_ALLOWED_COLOR_ROLES)} (D-G valence)"
+        )
+
+    if rendering.reference_frame not in _ALLOWED_REFERENCE_FRAMES:
+        raise ClaimScopeError(
+            f"reference frame {rendering.reference_frame!r} is a "
+            "population/verdict framing — only "
+            f"{sorted(_ALLOWED_REFERENCE_FRAMES)} pass (D-G valence)"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# D-G #3 — narration guard (health-dashboard A&D §2.6)
+# --------------------------------------------------------------------------- #
+
+
+def assert_narration_safe(text: str) -> None:
+    """Gate free LLM narration; raise ``ClaimScopeError`` on violation.
+
+    The extended text guard (efficacy + advice/diagnosis lexicons, with
+    the matched negated-disclaimer excision) applied to free narration.
+    No caveat-triad requirement — narration is prose, not a metric; the
+    triad stays mandatory for metric text (``assert_claim_safe``).
+
+    Fail-closed contract: every LLM narration passes here before ANY
+    surface. On rejection the caller renders the score WITHOUT narration
+    (``narration=None``) — never a "fixed" narration, never the raw one.
+    """
+    hit = _BANNED_RE.search(_strip_disclaimers(_fold(text)))
+    if hit is not None:
+        raise ClaimScopeError(
+            f"banned advice/efficacy term {hit.group(0)!r} in narration — "
+            "render the score without narration (D-G fail-closed)"
+        )
+
+
+__all__ = [
+    "BANNED_ADVICE_LEXICON",
+    "BANNED_LEXICON",
+    "ClaimScopeError",
+    "ScoreRendering",
+    "assert_claim_safe",
+    "assert_narration_safe",
+    "assert_valence_safe",
+]
