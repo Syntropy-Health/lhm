@@ -30,9 +30,12 @@ InputResource = Literal["NutritionOrder", "MedicationRequest", "MedicationStatem
 #: wearable series — all normalized app-side into aligned ``Observation``s.
 OutcomeKind = Literal["journal_series", "checkin_sentiment", "wearable_series"]
 
-#: v2 estimator slot (ADR-0002 reserve). v0.1 ships deterministic stubs only;
+#: The ADR-0002 estimator slot. ``stub`` = the deterministic v0.1 fallback
+#: (also the recorded degradation when the ``[lhm-scoring]`` extra is
+#: absent — A&D D-D); ``ols_standardized`` = the real association estimator
+#: the analyze seam runs when the extra imports cleanly (HD-4);
 #: ``adam`` / ``grid`` re-enter through the correction/fit layer in v2.
-FitMethod = Literal["stub", "adam", "grid"]
+FitMethod = Literal["stub", "ols_standardized", "adam", "grid"]
 
 Confidence = Literal["low", "mid", "strong"]
 
