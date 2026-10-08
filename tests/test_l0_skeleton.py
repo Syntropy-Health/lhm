@@ -7,6 +7,7 @@ clean env (the R7 install test reuses it). No app imports, no DB, no network.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -416,8 +417,17 @@ class TestAppIndependenceAllowlist:
             "assert not extra, f'lhm pulled modules outside the allowlist: {extra}'\n"
             "print('allowlist clean')\n"
         )
+        # An installed pydantic PLUGIN (logfire's `logfire-plugin` entry point)
+        # is loaded on the first BaseModel no matter who imports pydantic; it
+        # is an ambient venv property, not an lhm import. Disable exactly that
+        # plugin (as the runtime image does) so this guard keeps measuring lhm.
+        env = {**os.environ, "PYDANTIC_DISABLE_PLUGINS": "logfire-plugin"}
         out = subprocess.run(
-            [sys.executable, "-c", code], capture_output=True, text=True, check=False
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
         )
         assert out.returncode == 0, out.stderr
         assert "allowlist clean" in out.stdout
