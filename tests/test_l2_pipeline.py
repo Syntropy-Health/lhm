@@ -16,6 +16,7 @@ Covers the phase's PVR criteria:
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -111,7 +112,18 @@ class TestAnalyzeR2:
         assert sig.confidence in ("low", "mid", "strong")
         assert len(sig.fit.corrections) == 6  # corrections-list-bearing
         lo, hi = sig.fit.posterior_ci
-        assert lo < hi  # interval-bearing
+        # interval-bearing: two finite, ordered bounds. NOT `lo < hi`: this
+        # fixture is a perfect step (2.0 x10 -> 8.0 x10), so the real OLS fit
+        # has ~zero residual (MEASURED ssr 3e-29 on x86-64) and statsmodels'
+        # conf_int() collapses onto the slope (6.000000000000001,
+        # 6.000000000000003); standardized and clipped to [-1, 1] that is
+        # (1.0, 1.0) by construction. `lo < hi` held on the arm64 Mac runners
+        # only by floating-point noise and fails on x86-64 (GitHub-hosted
+        # runners, SJ #2346). Interval WIDTH on the real path is pinned where
+        # the fixture is non-degenerate: test_scoring.py::
+        # test_real_ci_derives_from_model_conf_int_not_fabricated.
+        assert math.isfinite(lo) and math.isfinite(hi)
+        assert lo <= hi
         # HD-4 seam (health-dashboard A&D D-D): with the [lhm-scoring]
         # extra installed the method slot records the REAL estimator; the
         # deterministic stub remains the recorded degradation without it.
