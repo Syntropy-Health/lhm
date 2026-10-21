@@ -198,8 +198,23 @@ class TestLicenseNoticeGate:
         assert "BSD" in notice
 
     def test_pyproject_declares_apache_2(self) -> None:
-        py = (LHM_ROOT / "pyproject.toml").read_text()
-        assert 'license = { text = "Apache-2.0" }' in py
+        """PEP 639 form: an SPDX expression plus the files that carry the text.
+
+        PyPI metadata is immutable per version, so the deprecated table form
+        (`license = { text = ... }`) and the license classifier were replaced
+        BEFORE the first upload (CTO #15700 U1). setuptools removes support
+        for the old form in 2027.
+        """
+        import tomllib
+
+        meta = tomllib.loads((LHM_ROOT / "pyproject.toml").read_text())
+        project = meta["project"]
+        assert project["license"] == "Apache-2.0"
+        assert project["license-files"] == ["LICENSE", "NOTICE"]
+        assert not [c for c in project.get("classifiers", []) if c.startswith("License ::")], (
+            "a License classifier alongside an SPDX expression is rejected by modern tooling"
+        )
+        assert any(r.startswith("setuptools>=77") for r in meta["build-system"]["requires"])
 
     def test_no_copyleft_in_dependency_graph(self) -> None:
         """D2 license posture: BSD/MIT-family only — no (L)GPL anywhere."""
